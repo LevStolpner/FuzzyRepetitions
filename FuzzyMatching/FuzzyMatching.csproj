@@ -1,0 +1,90 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{BA14EB88-8F08-4783-93C3-E8DEB0864AF5}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>FuzzyMatching</RootNamespace>
+    <AssemblyName>FuzzyMatching</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Lzma#">
+      <HintPath>..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharp\ExternalLibs\Lzma#.dll</HintPath>
+    </Reference>
+    <Reference Include="StemmersNet">
+      <HintPath>..\packages\StemmersNet.1.1.1.0\lib\net20\StemmersNet.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="FormattingConverter.cs" />
+    <Compile Include="MainClass.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Word.cs" />
+    <Compile Include="WordPosition.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Classes\7zip\Compress\LzmaAlone\LzmaAlone.csproj" />
+    <Content Include="Classes\7zip\Compress\LzmaAlone\LzmaAlone.sln" />
+    <Content Include="DocBook.xml" />
+    <Content Include="LinuxKernel.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharpPrebuilt\LemmaSharpPrebuilt.csproj">
+      <Project>{1e700d21-62d3-4525-93fe-c1fb0a1b0564}</Project>
+      <Name>LemmaSharpPrebuilt</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharpPrebuilt\LemmaSharpPrebuiltCompact.csproj">
+      <Project>{9ba3f2c4-5dab-4d7b-b431-b072a0d8fc6a}</Project>
+      <Name>LemmaSharpPrebuiltCompact</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharp\LemmaSharp.csproj">
+      <Project>{a39293c1-92d8-47b9-93a4-41f443b4f9e4}</Project>
+      <Name>LemmaSharp</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
