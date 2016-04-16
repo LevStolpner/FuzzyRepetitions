@@ -47,11 +47,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="FormattingConverter.cs" />
+    <Compile Include="CloneFinder.cs" />
     <Compile Include="MainClass.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Fragment.cs" />
     <Compile Include="Word.cs" />
-    <Compile Include="WordPosition.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

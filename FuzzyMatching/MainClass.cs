@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Timers;
 
 namespace FuzzyMatching
@@ -7,11 +9,14 @@ namespace FuzzyMatching
     {
         static void Main()
         {
-            var converter = new FormattingConverter("LinuxKernel.xml");
+            var converter = new CloneFinder("LinuxKernel.xml");
+            Console.WriteLine("Loading XML-document...");
 
             if (converter.TryLoadXmlDocument())
             {
-                converter.RemoveXmlFormatting();
+                converter.ConvertXmlToPlainText();
+                Console.WriteLine("XML was transformed to plain text");
+                Console.ReadLine();
 
                 converter.LemmatizeText();
                 Console.WriteLine("Text was lemmatized");
@@ -23,6 +28,16 @@ namespace FuzzyMatching
 
                 converter.BuildAlphabet();
                 Console.WriteLine("Alphabet was built");
+                Console.ReadLine();
+
+                converter.SplitTextToFragments();
+                Console.WriteLine("Text was splitted into fragments");
+                Console.ReadLine();
+
+                var a = DateTime.Now;
+                converter.FindFuzzyRepetitions();
+                Console.WriteLine("All segments were compared");
+                Console.WriteLine(DateTime.Now - a);
                 Console.ReadLine();
 
                 converter.RestoreXmlFormatting();
