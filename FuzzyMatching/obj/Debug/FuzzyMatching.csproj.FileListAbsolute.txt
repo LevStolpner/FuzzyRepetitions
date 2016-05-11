@@ -28,3 +28,4 @@ C:\Users\Leva\Documents\Visual Studio 2013\Projects\FuzzyRepetitions\FuzzyMatchi
 C:\Users\Leva\Documents\Visual Studio 2013\Projects\FuzzyRepetitions\FuzzyMatching\bin\Debug\LemmaSharpPrebuiltCompact.pdb
 C:\Users\Leva\Documents\Visual Studio 2013\Projects\FuzzyRepetitions\FuzzyMatching\bin\Debug\LemmaSharp.pdb
 C:\Users\Leva\Documents\Visual Studio 2013\Projects\FuzzyRepetitions\FuzzyMatching\obj\Debug\FuzzyMatching.csprojResolveAssemblyReference.cache
+C:\Users\Leva\Documents\Visual Studio 2013\Projects\FuzzyRepetitions\FuzzyMatching\bin\Debug\Zend.xml

@@ -50,8 +50,6 @@
     <Compile Include="CloneFinder.cs" />
     <Compile Include="MainClass.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Fragment.cs" />
-    <Compile Include="Word.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
@@ -62,6 +60,9 @@
     <Content Include="Classes\7zip\Compress\LzmaAlone\LzmaAlone.sln" />
     <Content Include="DocBook.xml" />
     <Content Include="LinuxKernel.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Zend.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

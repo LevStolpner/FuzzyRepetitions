@@ -11,70 +11,114 @@ namespace FuzzyMatching
 {
     public class CloneFinder
     {
-        private const int SizeOfSegment = 20;
-        private static readonly char[] Delimeters = { ' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'',
-                                                      '/', '\\', '-',  '+', '=', '*', '<', '>' };
-
-        private readonly Dictionary<string, string> _replacingValues;
-        private readonly List<string> _alphabet;
-        private readonly string _initialDocumentName;
-        private readonly XmlReaderSettings _readerSettings;
-        private readonly ILemmatizer _lemmatizer;
-        private readonly EnglishStemmer _stemmer;
+        private const int HashLength = 9;
+        private readonly string _documentName;
         private XmlDocument _document;
-        private string _text;
-        private string _lemmatizedText;
-        private string _stemmedText;
-        private string[] _words;
-        private int[] _numbers;
-        private Fragment[] _arrayOfFragments;          //in this array we will store segments by size of a segment with overlap
-        //positions of words?
+        private readonly int _fragmentSize;
+        private readonly int[,] _d;
+        private int[] _numbers; //TODO: find a way not to store it here
 
-        public CloneFinder(string initialDocumentName)
+        public CloneFinder(string documentName, int sizeOfFragment)
         {
-            if (!String.IsNullOrEmpty(initialDocumentName))
+            if (!String.IsNullOrEmpty(documentName))
             {
-                _initialDocumentName = initialDocumentName;
-                _readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore };
-                _lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
-                _stemmer = new EnglishStemmer();
+                _documentName = documentName;
+                _fragmentSize = sizeOfFragment;
+                _d = new int[_fragmentSize, _fragmentSize];
 
-                _replacingValues = new Dictionary<string, string> { { "\n", " " }, { "\t", " " }, { "   ", " " }, { "  ", " " } };
-                _alphabet = new List<string>();
-                _text = String.Empty;
-                _lemmatizedText = String.Empty;
-                _stemmedText = String.Empty;
+                for (var i = 0; i < _fragmentSize; i++)
+                {
+                    for (var j = 0; j < _fragmentSize; j++)
+                    {
+                        _d[i, j] = _fragmentSize * 100;
+                    }
+                }
             }
             else
             {
-                throw new ArgumentNullException("initialDocumentName");
+                throw new ArgumentNullException("documentName");
             }
         }
 
-        public bool TryLoadXmlDocument()
+        private struct Word
+        {
+            public string Value;
+            public int NumberInAlphabet;
+
+            public Word(string word, int number)
+            {
+                Value = word;
+                NumberInAlphabet = number;
+            }
+        }
+
+        private struct Fragment
+        {
+            public readonly int Position;
+            public readonly int HashValue;
+
+            public Fragment(int position, int hash)
+            {
+                Position = position;
+                HashValue = hash;
+            }
+        }
+
+        public void Run()
+        {
+            Console.WriteLine("Loading XML-document...");
+
+            if (TryLoadXmlDocument())
+            {
+                Console.WriteLine("XML document was loaded");
+                var text = ConvertXmlToText(_documentName, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+                Console.WriteLine("XML was transformed to plain text");
+
+                text = Preprocess(text);
+                Console.WriteLine("Text was preprocessed");
+
+                var fragments = Split(text);
+                Console.WriteLine("Text was splitted into fragments");
+
+                var a = DateTime.Now;
+                var clones = FindClones(fragments);
+                Console.WriteLine("All segments were compared");
+                Console.WriteLine(DateTime.Now - a);
+
+                RestoreXml();
+                Console.WriteLine("Formatting was restored");
+            }
+            else
+            {
+                Console.WriteLine("Could not read XML document. Probably it contains formatting mistakes.");
+            }
+
+            Console.ReadLine();
+        }
+
+        private bool TryLoadXmlDocument()
         {
             try
             {
                 _document = new XmlDocument();
-                _document.Load(_initialDocumentName);
+                _document.Load(_documentName);
+                return true;
             }
             catch (Exception e)
             {
                 return false;
             }
-
-            return true;
         }
 
-        public void ConvertXmlToPlainText()
+        private string ConvertXmlToText(string documentName, XmlReaderSettings settings)
         {
-            if (_document == null) return;
+            if (_document == null) return null;
 
             var sb = new StringBuilder();
 
             try
             {
-                using (var reader = XmlReader.Create(_initialDocumentName, _readerSettings))
+                using (var reader = XmlReader.Create(documentName, settings))
                 {
                     while (reader.Read())
                     {
@@ -83,155 +127,87 @@ namespace FuzzyMatching
                         sb.Append(' ');
                     }
                 }
+
+                var replacingValues = new Dictionary<string, string> { { "\n", " " }, { "\t", " " }, { "   ", " " }, { "  ", " " } };
+
+                foreach (var k in replacingValues.Keys)
+                {
+                    sb.Replace(k, replacingValues[k]);
+                }
+
+                return sb.ToString();
             }
             catch (Exception e)
             {
                 throw new Exception(e.Message);
             }
-
-            SaveStringToFile(sb.ToString());
-
-            SaveText(sb);
         }
 
-        public void RestoreXmlFormatting()
+        private string Preprocess(string text)
         {
-            if (_document == null) return;
+            if (String.IsNullOrEmpty(text)) return null;
 
-            _document.Save(_initialDocumentName);
-        }
+            var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
+            var stemmer = new EnglishStemmer();
+            var delimeters = new[] {' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'', '/', '\\', '-', '+', '=', '*', '<', '>'};
+            var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries);
+            var length = words.Length;
+            var alphabet = new List<string>();
+            var preprocessedText = new StringBuilder();
 
-        public void LemmatizeText()
-        {
-            if (String.IsNullOrEmpty(_text)) return;
-
-            _words = _text.Split(Delimeters, StringSplitOptions.RemoveEmptyEntries);
-            var lemmatizedText = new StringBuilder();
-
-            foreach (var word in _words.Select(x => x.ToLower()))
+            foreach (var word in words.Select(x => x.ToLower()))
             {
-                lemmatizedText.Append(_lemmatizer.Lemmatize(word));
-                lemmatizedText.Append(' ');
+                var newWord = stemmer.Stem(lemmatizer.Lemmatize(word));
+                preprocessedText.Append(newWord);
+                preprocessedText.Append(' ');
+
+                if (alphabet.Find(x => x == newWord) == null)
+                {
+                    alphabet.Add(word);
+                }
             }
 
-            _lemmatizedText = lemmatizedText.ToString();
-
-            SaveStringToFile(_lemmatizedText);
-        }
-
-        public void StemText()
-        {
-            if (String.IsNullOrEmpty(_lemmatizedText)) return;
-
-            _words = _lemmatizedText.Split(Delimeters, StringSplitOptions.RemoveEmptyEntries);
-            var stemmedText = new StringBuilder();
-
-            foreach (var word in _words.Select(x => x.ToLower()))
-            {
-                stemmedText.Append(_stemmer.Stem(word));
-                stemmedText.Append(' ');
-            }
-
-            _stemmedText = stemmedText.ToString();
-
-            SaveStringToFile(_stemmedText);
-        }
-
-        public void BuildAlphabet()
-        {
-            if (String.IsNullOrEmpty(_stemmedText)) return;
-
-            _words = _stemmedText.Split(Delimeters, StringSplitOptions.RemoveEmptyEntries);
-
-            var temp = _words.ToList();
-
-            foreach (var word in temp.Where(word => _alphabet.Find(x => x == word) == null))
-            {
-                _alphabet.Add(word);
-            }
-
-            _alphabet.Sort();
-            var length = _words.Length;
+            alphabet.Sort();
             _numbers = new int[length];
 
             for (var i = 0; i < length; i++)
             {
-                _numbers[i] = _alphabet.BinarySearch(0, _alphabet.Count, _words[i], Comparer<string>.Default);
+                _numbers[i] = alphabet.BinarySearch(0, alphabet.Count, words[i], Comparer<string>.Default);
             }
+
+            return preprocessedText.ToString();
         }
 
-        public void SplitTextToFragments()
+        private Fragment[] Split(string text)
         {
-            if (String.IsNullOrEmpty(_stemmedText) || _alphabet == null) return;
+            if (String.IsNullOrEmpty(text)) return null;
 
-            var length = _words.Length;
-
-            var numberOfFragments = length / SizeOfSegment;
-
-            _arrayOfFragments = new Fragment[numberOfFragments]; //or divide by some part of segment to create overlap
+            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var length = words.Length;
+            var numberOfFragments = length / _fragmentSize;
+            var arrayOfFragments = new Fragment[numberOfFragments];
             //last fragment should be worked with after the loop to remove if conditions
-            for (int i = 0, k = 0; i < length; i += SizeOfSegment, k++)
+
+            for (int i = 0, k = 0; i < length; i += _fragmentSize, k++)
             {
-                var symbols = new char[SizeOfSegment * 2 / 3]; //remove hardcode
+                var symbols = new char[_fragmentSize * 2 / 3]; //TODO:remove hardcode
 
                 if (k >= numberOfFragments) break;
-                for (var j = i; j < i + SizeOfSegment * 2 / 3; j++)
+                for (var j = i; j < i + _fragmentSize * 2 / 3; j++)
                 {
                     if (j < length)
-                        symbols[j - i] = _words[j][0];
+                        symbols[j - i] = words[j][0];
                 }
 
-                _arrayOfFragments[k] = new Fragment(i, SignatureHash(symbols));
+                arrayOfFragments[k] = new Fragment(i, Hash(symbols));
             }
 
-            //now we have array of starting positions of our parts for comparison (do we need to store them?)
+            return arrayOfFragments;
         }
 
-        public void FindFuzzyRepetitions()
+        private static int Hash(char[] symbols)
         {
-            if (String.IsNullOrEmpty(_stemmedText) || _alphabet == null) return;
-
-            var counter = 0;
-            var counter2 = 0;
-            var counter3 = 0;
-
-            var length = _arrayOfFragments.Length;
-            var hashLength = _arrayOfFragments[0].Hash.Length;
-
-            //TODO: we should have a mechanism for gathering clones
-            for (var i = 300; i < length; i++)
-            {
-                for (var j = i + 1; j < length; j += 1)   //maybe step is bigger, than 1 segment?
-                {
-                    //first we need faster hash func to differ similar fragments from absolutely different
-                    counter3++;
-                    //CalculateLevensteinInstruction(_arrayOfFragments[i].Position, _arrayOfFragments[j].Position);
-                    if (!CompareHashes(hashLength, _arrayOfFragments[i].Hash, _arrayOfFragments[j].Hash)) continue;
-                    counter2++;
-                    if (CompareFragments(_arrayOfFragments[i].Position, _arrayOfFragments[j].Position)) counter++;
-                }
-            }
-
-            Console.WriteLine("All comparisons: {2} Similar hashes: {0}, similar fragments: {1}", counter2, counter, counter3);
-        }
-
-        private bool CompareHashes(int length, bool[] firstHash, bool[] secondHash)
-        {
-            var counter = 0;
-
-            for (var i = 0; i < length; i++)
-            {
-                if (firstHash[i] != secondHash[i]) counter++;
-                if (counter > length / 4) break;
-            }
-
-            return counter <= length / 4;
-        }
-
-        private bool[] SignatureHash(char[] symbols)
-        {
-            //use bit operations and use 1 int, comparing hashes with logical operations and counting differences in bits
-            bool[] hash = { false, false, false, false, false, false, false, false, false, false };
+            var hash = 0;
             foreach (var symbol in symbols)
             {
                 switch (symbol)
@@ -239,45 +215,45 @@ namespace FuzzyMatching
                     case 'a':
                     case 'b':
                     case 'c':
-                        hash[0] = true;
+                        hash = hash | 1;
                         break;
                     case 'd':
                     case 'e':
                     case 'f':
-                        hash[1] = true;
+                        hash = hash | 2;
                         break;
                     case 'g':
                     case 'h':
                     case 'i':
-                        hash[2] = true;
+                        hash = hash | 4;
                         break;
                     case 'j':
                     case 'k':
                     case 'l':
-                        hash[3] = true;
+                        hash = hash | 8;
                         break;
                     case 'm':
                     case 'n':
                     case 'o':
-                        hash[4] = true;
+                        hash = hash | 16;
                         break;
                     case 'p':
                     case 'q':
                     case 'r':
-                        hash[5] = true;
+                        hash = hash | 32;
                         break;
                     case 's':
                     case 't':
                     case 'u':
-                        hash[6] = true;
+                        hash = hash | 64;
                         break;
                     case 'v':
                     case 'w':
                     case 'x':
-                        hash[7] = true;
+                        hash = hash | 128;
                         break;
                     default:
-                        hash[8] = true;
+                        hash = hash | 256;
                         break;
                 }
             }
@@ -285,82 +261,118 @@ namespace FuzzyMatching
             return hash;
         }
 
-        private bool CompareFragments(int firstSegmentPosition, int secondSegmentPosition)
+        private List<List<Fragment>> FindClones(Fragment[] fragments)
         {
-            var counter = SizeOfSegment / 2; // here we set how much wrong words we can find while comparing two segments
-            var tmpNumbers1 = new StringBuilder();
-            var tmpNumbers2 = new StringBuilder();
-            //TODO: use algorithms of fuzzy matching to compare two sets faster! (signature hashing/matching 2 strings/computing edit distance/..)
-            for (var i = 0; i < SizeOfSegment; i++)
-            {
-                if (counter <= 0) return false;
-                if (counter + i >= SizeOfSegment)
-                {
-                    Console.WriteLine("Similar fragments found: {0} {1}", tmpNumbers1, tmpNumbers2);
-                    return true;
-                }
+            if (fragments == null) return null;
 
-                if (_numbers[firstSegmentPosition + i] == _numbers[secondSegmentPosition + i])
+            var counter = 0;
+            var counter2 = 0;
+            var counter3 = 0;
+            var cloneStorage = new List<List<Fragment>>();
+            var length = fragments.Length;
+
+            for (var i = 0; i < length; i++)
+            {
+                for (var j = i + 1; j < length; j += 1)   //if overlap, step should be different (soo, no overlap?)
                 {
-                    tmpNumbers1.Append(_words[firstSegmentPosition + i]);
-                    tmpNumbers1.Append(' ');
-                    tmpNumbers2.Append(_words[secondSegmentPosition + i]);
-                    tmpNumbers2.Append(' ');
-                }
-                else
-                {
-                    counter--;
+                    counter++;
+                    if (!CompareHashes(fragments[i].HashValue, fragments[j].HashValue)) continue;
+                    counter2++;
+                    if (!CompareFragments(fragments[i].Position, fragments[j].Position)) continue;
+
+                    //TODO: to save similar fragments, we need to check first, were they already in storage or not?
+                    //TODO: if not - add a new list, else - add to existing one
+
+                    cloneStorage.Add(new List<Fragment> { fragments[i], fragments[j] });
+                    counter3++;
                 }
             }
 
-            Console.WriteLine("Similar fragments found: {0}\n {1}", tmpNumbers1, tmpNumbers2);
-            return true;
+            Console.WriteLine("All comparisons: {0} Similar hashes: {1}, similar fragments: {2}", counter, counter2, counter3);
+            return cloneStorage;
         }
 
-        public int CalculateLevensteinInstruction(int firstSegmentPosition, int secondSegmentPosition)
+        private bool CompareHashes(int firstHash, int secondHash)
         {
-            int[,] D = new int[SizeOfSegment, SizeOfSegment];
+            var diff = firstHash ^ secondHash;
+
+            var count = 0;
+            while (diff != 0)
+            {
+                count++;
+                diff &= (diff - 1);
+            }
+
+            return count <= HashLength / 4; //TODO: this parameter should be a setting
+        }
+
+        private bool CompareFragments(int firstPosition, int secondPosition)
+        {
+            var d = _d;
+            d[0, 0] = 0;
+            var tmp = new int[3];
+            int p = _fragmentSize / 4;
+
+            for (var i = 1; i < _fragmentSize; i++)
+            {
+                var border = Math.Min(_fragmentSize, i + p);
+                for (var j = Math.Max(1, i - p); j < border; j++)
+                {
+                    tmp[0] = _numbers[firstPosition + i] == _numbers[secondPosition + j] ? 0 : 1;
+                    tmp[0] += d[i - 1, j - 1];
+                    tmp[1] = d[i - 1, j] + 1;
+                    tmp[2] = d[i, j - 1] + 1;
+                    d[i, j] = tmp.Min();
+                }
+            }
+
+            return d[_fragmentSize - 1, _fragmentSize - 1] <= _fragmentSize / 2;
+        }
+
+        private bool CalculateLevensteinInstruction(int firstSegmentPosition, int secondSegmentPosition)
+        {
+            var d = new int[_fragmentSize, _fragmentSize];
             var tmp = new int[3];
 
-            D[0, 0] = 0;
-            for (var j = 1; j < SizeOfSegment; j++)
+            d[0, 0] = 0;
+            for (var j = 1; j < _fragmentSize; j++)
             {
-                D[0, j] = D[0, j - 1] + 1;
+                d[0, j] = d[0, j - 1] + 1;
             }
-            for (var i = 1; i < SizeOfSegment; i++)
+            for (var i = 1; i < _fragmentSize; i++)
             {
-                D[i, 0] = D[i - 1, 0] + 1;
-                for (var j = 1; j < SizeOfSegment; j++)
+                d[i, 0] = d[i - 1, 0] + 1;
+                for (var j = 1; j < _fragmentSize; j++)
                 {
-                    if (_numbers[firstSegmentPosition + i] != _numbers[secondSegmentPosition + i])
+                    if (_numbers[firstSegmentPosition + i] != _numbers[secondSegmentPosition + j])
                     {
-                        tmp[0] = D[i - 1, j] + 1;
-                        tmp[1] = D[i, j - 1] + 1;
-                        tmp[2] = D[i - 1, j - 1] + 1;
-                        D[i, j] = tmp.Min();
+                        tmp[0] = d[i - 1, j] + 1;
+                        tmp[1] = d[i, j - 1] + 1;
+                        tmp[2] = d[i - 1, j - 1] + 1;
+                        d[i, j] = tmp.Min();
                     }
                     else
                     {
-                        D[i, j] = D[i - 1, j - 1];
+                        d[i, j] = d[i - 1, j - 1];
                     }
                 }
             }
 
-            if (D[SizeOfSegment - 1, SizeOfSegment - 1] < SizeOfSegment / 2)
-            {
-                Console.WriteLine("Similar fragments found: {0} {2} \n {1} {3}", firstSegmentPosition, secondSegmentPosition,
-                    _words[firstSegmentPosition], _words[secondSegmentPosition]);
-            }
-
-            return D[SizeOfSegment - 1, SizeOfSegment - 1];
+            return d[_fragmentSize - 1, _fragmentSize - 1] <= _fragmentSize / 2;
         }
 
+        private void RestoreXml()
+        {
+            if (_document == null) return;
+
+            _document.Save(_documentName);
+        }
 
         private void SaveStringToFile(string textToSave)
         {
             try
             {
-                using (var streamWriter = new StreamWriter(_initialDocumentName))
+                using (var streamWriter = new StreamWriter(_documentName))
                 {
                     streamWriter.Write(textToSave);
                 }
@@ -369,21 +381,6 @@ namespace FuzzyMatching
             {
                 throw new Exception(e.Message);
             }
-        }
-
-        private void SaveText(StringBuilder initialText)
-        {
-            foreach (var k in _replacingValues.Keys)
-            {
-                initialText.Replace(k, _replacingValues[k]);
-            }
-
-            _text = initialText.ToString();
-        }
-
-        public string ReturnText()
-        {
-            return _text;
         }
     }
 }
