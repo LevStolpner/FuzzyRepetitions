@@ -62,6 +62,9 @@
     <Content Include="LinuxKernel.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="SVN.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="Zend.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -52,14 +53,16 @@ namespace FuzzyMatching
             }
         }
 
-        private struct Fragment
+        private class Fragment
         {
-            public readonly int Position;
-            public readonly int HashValue;
+            public int Position;
+            public int Length;
+            public int HashValue;
 
             public Fragment(int position, int hash)
             {
                 Position = position;
+                Length = 1;
                 HashValue = hash;
             }
         }
@@ -83,6 +86,11 @@ namespace FuzzyMatching
                 var a = DateTime.Now;
                 var clones = FindClones(fragments);
                 Console.WriteLine("All segments were compared");
+                Console.WriteLine(DateTime.Now - a);
+
+                a = DateTime.Now;
+                var groupedClones = GroupAndExpand(clones);
+                Console.WriteLine("All clones were grouped and expanded");
                 Console.WriteLine(DateTime.Now - a);
 
                 RestoreXml();
@@ -149,7 +157,7 @@ namespace FuzzyMatching
 
             var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
             var stemmer = new EnglishStemmer();
-            var delimeters = new[] {' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'', '/', '\\', '-', '+', '=', '*', '<', '>'};
+            var delimeters = new[] { ' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'', '/', '\\', '-', '+', '=', '*', '<', '>' };
             var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries);
             var length = words.Length;
             var alphabet = new List<string>();
@@ -280,9 +288,6 @@ namespace FuzzyMatching
                     counter2++;
                     if (!CompareFragments(fragments[i].Position, fragments[j].Position)) continue;
 
-                    //TODO: to save similar fragments, we need to check first, were they already in storage or not?
-                    //TODO: if not - add a new list, else - add to existing one
-
                     cloneStorage.Add(new List<Fragment> { fragments[i], fragments[j] });
                     counter3++;
                 }
@@ -318,8 +323,7 @@ namespace FuzzyMatching
                 var border = Math.Min(_fragmentSize, i + p);
                 for (var j = Math.Max(1, i - p); j < border; j++)
                 {
-                    tmp[0] = _numbers[firstPosition + i] == _numbers[secondPosition + j] ? 0 : 1;
-                    tmp[0] += d[i - 1, j - 1];
+                    tmp[0] = _numbers[firstPosition + i] == _numbers[secondPosition + j] ? d[i - 1, j - 1] : d[i - 1, j - 1] + 1;
                     tmp[1] = d[i - 1, j] + 1;
                     tmp[2] = d[i, j - 1] + 1;
                     d[i, j] = tmp.Min();
@@ -327,6 +331,121 @@ namespace FuzzyMatching
             }
 
             return d[_fragmentSize - 1, _fragmentSize - 1] <= _fragmentSize / 2;
+        }
+
+        private List<List<Fragment>> GroupAndExpand(List<List<Fragment>> fragments)
+        {
+            var a = Group(fragments).Select(Expand).ToList();
+
+            return a;
+        }
+
+        private List<List<Fragment>> Group(List<List<Fragment>> fragments)
+        {
+            var firstList = fragments;
+            var secondList = new List<List<Fragment>>();
+
+            while (Undistributed(firstList))
+            {
+                secondList.Add(fragments[0]);
+
+                for (var i = 1; i < firstList.Count; i++)
+                {
+                    var newList = true;
+
+                    for (var j = 0; j < firstList[i].Count; j++)
+                    {
+                        var index = secondList.FindIndex(x => x.Exists(y => y.Position == firstList[i][j].Position));
+
+                        if (index < 0) continue;
+                        newList = false;
+                        firstList[i].ForEach(delegate(Fragment fragment)
+                        {
+                            if (!secondList[index].Exists(x => x.Position == fragment.Position))
+                            {
+                                secondList[index].Add(fragment);
+                            }
+                        });
+                        break;
+                    }
+
+                    if (newList)
+                    {
+                        secondList.Add(firstList[i]);
+                    }
+                }
+
+                firstList = secondList;
+                secondList = new List<List<Fragment>>();
+            }
+
+            return firstList;
+
+            //algorithm of grouping:
+            //first, we look through list of groups (firstly it is pairs)
+            //then, we regroup into new list of groups, adding pairs into one group if they have common fragment
+            //after that, here we go again: look through list of new groups and regroup again
+            //we do that until we have list of groups, which doesn't have any common elements
+            //after that grouping we can expand fragments in groups by Expand method
+        }
+
+        private bool Undistributed(List<List<Fragment>> list)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                for (var j = i + 1; j < list.Count; j++)
+                {
+                    if (list[i].Exists(x => list[j].Exists(y => y.Position == x.Position)))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private List<Fragment> Expand(List<Fragment> fragments)
+        {
+            var expandLeft = true;
+            var expandRight = true;
+            var lastFragmentPosition = fragments[fragments.Count - 1].Position;
+
+            while (expandLeft && fragments.TrueForAll(x => x.Position - 1 >= 0))
+            {
+                for (var i = 0; i < fragments.Count - 1; i++)
+                {
+                    if (CompareFragments(fragments[i].Position - 1, fragments[i + 1].Position - 1)) continue;
+                    expandLeft = false;
+                    break;
+                }
+
+                if (!expandLeft) continue;
+                foreach (var t in fragments)
+                {
+                    t.Position -= 1;
+                    t.Length += 1;
+                }
+            }
+
+            while (expandRight && fragments.TrueForAll(x => x.Position + 1 > lastFragmentPosition))
+            {
+                for (var i = 0; i < fragments.Count - 1; i++)
+                {
+                    if (CompareFragments(fragments[i].Position + 1, fragments[i + 1].Position + 1)) continue;
+                    expandRight = false;
+                    break;
+                }
+
+                if (!expandRight) continue;
+                foreach (var t in fragments)
+                {
+                    t.Position -= 1;
+                    t.Length += 1;
+                }
+            }
+
+            return fragments;
         }
 
         private bool CalculateLevensteinInstruction(int firstSegmentPosition, int secondSegmentPosition)
