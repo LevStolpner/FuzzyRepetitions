@@ -18,6 +18,7 @@ namespace FuzzyMatching
         private readonly int _fragmentSize;
         private readonly int[,] _d;
         private int[] _numbers; //TODO: find a way not to store it here
+        private List<string> _alphabet = new List<string>();
 
         public CloneFinder(string documentName, int sizeOfFragment)
         {
@@ -93,6 +94,25 @@ namespace FuzzyMatching
                 Console.WriteLine("All clones were grouped and expanded");
                 Console.WriteLine(DateTime.Now - a);
 
+                foreach (var t in groupedClones)
+                {
+                    var sb = new StringBuilder();
+
+                    foreach (var t1 in t)
+                    {
+                        for (var k = t1.Position;
+                            k < t1.Position + t1.Length * _fragmentSize;
+                            k++)
+                        {
+                            sb.Append(_alphabet[_numbers[k]]);
+                            sb.Append(' ');
+                        }
+                        sb.AppendLine();
+                    }
+
+                    SaveStringToFile(sb.ToString());
+                }
+
                 RestoreXml();
                 Console.WriteLine("Formatting was restored");
             }
@@ -163,19 +183,21 @@ namespace FuzzyMatching
             var alphabet = new List<string>();
             var preprocessedText = new StringBuilder();
 
-            foreach (var word in words.Select(x => x.ToLower()))
+            for (var i = 0; i < words.Length; i++)
             {
-                var newWord = stemmer.Stem(lemmatizer.Lemmatize(word));
+                var newWord = stemmer.Stem(lemmatizer.Lemmatize(words[i].ToLower()));
+                words[i] = newWord;
                 preprocessedText.Append(newWord);
                 preprocessedText.Append(' ');
 
                 if (alphabet.Find(x => x == newWord) == null)
                 {
-                    alphabet.Add(word);
+                    alphabet.Add(newWord);
                 }
             }
 
             alphabet.Sort();
+            _alphabet = alphabet;
             _numbers = new int[length];
 
             for (var i = 0; i < length; i++)
