@@ -1,9 +1,4 @@
-﻿using System;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Timers;
-
-namespace FuzzyMatching
+﻿namespace FuzzyMatching
 {
     public class MainClass
     {

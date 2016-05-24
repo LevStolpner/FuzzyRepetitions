@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Xml;
 using LemmaSharp;
@@ -19,6 +21,7 @@ namespace FuzzyMatching
         private readonly int[,] _d;
         private int[] _numbers; //TODO: find a way not to store it here
         private List<string> _alphabet = new List<string>();
+        private int _lastFragmentPosition;
 
         public CloneFinder(string documentName, int sizeOfFragment)
         {
@@ -59,7 +62,11 @@ namespace FuzzyMatching
             public int Position;
             public int Length;
             public int HashValue;
-
+            public Fragment(int position)
+            {
+                Position = position;
+                Length = 1;
+            }
             public Fragment(int position, int hash)
             {
                 Position = position;
@@ -82,6 +89,7 @@ namespace FuzzyMatching
                 Console.WriteLine("Text was preprocessed");
 
                 var fragments = Split(text);
+                _lastFragmentPosition = fragments.Last().Position;
                 Console.WriteLine("Text was splitted into fragments");
 
                 var a = DateTime.Now;
@@ -89,29 +97,17 @@ namespace FuzzyMatching
                 Console.WriteLine("All segments were compared");
                 Console.WriteLine(DateTime.Now - a);
 
-                a = DateTime.Now;
                 var groupedClones = GroupAndExpand(clones);
                 Console.WriteLine("All clones were grouped and expanded");
-                Console.WriteLine(DateTime.Now - a);
 
-                foreach (var t in groupedClones)
-                {
-                    var sb = new StringBuilder();
-
-                    foreach (var t1 in t)
-                    {
-                        for (var k = t1.Position;
-                            k < t1.Position + t1.Length * _fragmentSize;
-                            k++)
-                        {
-                            sb.Append(_alphabet[_numbers[k]]);
-                            sb.Append(' ');
-                        }
-                        sb.AppendLine();
-                    }
-
-                    SaveStringToFile(sb.ToString());
-                }
+                var newGroupedClones = DeleteIntersections(groupedClones);
+                Console.WriteLine("Intersections were deleted.");
+                var numberOfGroups = newGroupedClones.Count;
+                var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
+                var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
+                Console.WriteLine("Statistics: \n");
+                Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
+                Console.ReadLine();
 
                 RestoreXml();
                 Console.WriteLine("Formatting was restored");
@@ -352,10 +348,10 @@ namespace FuzzyMatching
                 }
             }
 
-            return d[_fragmentSize - 1, _fragmentSize - 1] <= _fragmentSize / 2;
+            return d[_fragmentSize - 1, _fragmentSize - 1] <= _fragmentSize / 5;
         }
 
-        private List<List<Fragment>> GroupAndExpand(List<List<Fragment>> fragments)
+        private List<List<List<Fragment>>> GroupAndExpand(List<List<Fragment>> fragments)
         {
             var a = Group(fragments).Select(Expand).ToList();
 
@@ -427,79 +423,96 @@ namespace FuzzyMatching
             return false;
         }
 
-        private List<Fragment> Expand(List<Fragment> fragments)
+        private List<List<Fragment>> Expand(List<Fragment> fragments)
         {
             var expandLeft = true;
             var expandRight = true;
-            var lastFragmentPosition = fragments[fragments.Count - 1].Position;
 
-            while (expandLeft && fragments.TrueForAll(x => x.Position - 1 >= 0))
+            var result = fragments.Select(t => new List<Fragment> { t }).ToList(); //now we have to expand lists of these fragments
+
+            while (expandLeft && result.TrueForAll(x => x.First().Position - _fragmentSize >= 0))
             {
-                for (var i = 0; i < fragments.Count - 1; i++)
+                for (var i = 0; i < result.Count - 1; i++)
                 {
-                    if (CompareFragments(fragments[i].Position - 1, fragments[i + 1].Position - 1)) continue;
+                    if (CompareFragments(result[i].First().Position - _fragmentSize, result[i + 1].First().Position - _fragmentSize)) continue;
                     expandLeft = false;
                     break;
                 }
 
                 if (!expandLeft) continue;
-                foreach (var t in fragments)
+                foreach (var t in result)
                 {
-                    t.Position -= 1;
-                    t.Length += 1;
+                    t.Insert(0, new Fragment(t.First().Position - _fragmentSize));
                 }
             }
 
-            while (expandRight && fragments.TrueForAll(x => x.Position + 1 > lastFragmentPosition))
+            while (expandRight && result.TrueForAll(x => x.Last().Position + _fragmentSize <= _lastFragmentPosition))
             {
                 for (var i = 0; i < fragments.Count - 1; i++)
                 {
-                    if (CompareFragments(fragments[i].Position + 1, fragments[i + 1].Position + 1)) continue;
+                    if (CompareFragments(result[i].Last().Position + _fragmentSize, result[i + 1].Last().Position + _fragmentSize)) continue;
                     expandRight = false;
                     break;
                 }
 
                 if (!expandRight) continue;
-                foreach (var t in fragments)
+                foreach (var t in result)
                 {
-                    t.Position -= 1;
-                    t.Length += 1;
+                    t.Add(new Fragment(t.Last().Position + _fragmentSize));
                 }
             }
 
-            return fragments;
+            return result;
         }
 
-        private bool CalculateLevensteinInstruction(int firstSegmentPosition, int secondSegmentPosition)
+        private List<List<List<Fragment>>> DeleteIntersections(List<List<List<Fragment>>> groupedFragments)
         {
-            var d = new int[_fragmentSize, _fragmentSize];
-            var tmp = new int[3];
+            var result = new List<List<List<Fragment>>>();
+            var excludedFromSearch = new List<int>();
 
-            d[0, 0] = 0;
-            for (var j = 1; j < _fragmentSize; j++)
+            for (var i = 0; i < groupedFragments.Count; i++)
             {
-                d[0, j] = d[0, j - 1] + 1;
-            }
-            for (var i = 1; i < _fragmentSize; i++)
-            {
-                d[i, 0] = d[i - 1, 0] + 1;
-                for (var j = 1; j < _fragmentSize; j++)
+                if (excludedFromSearch.Contains(i)) continue;
+                var currentList = groupedFragments[i]; //current group of clones
+                var foundIntersection = false;
+
+                for (var j = i + 1; j < groupedFragments.Count; j++)
                 {
-                    if (_numbers[firstSegmentPosition + i] != _numbers[secondSegmentPosition + j])
+                    if (excludedFromSearch.Contains(j)) continue;
+                    var comparedList = groupedFragments[j]; //another group of clones
+
+                    //comparing one group with another to see, does it have same fragments with currentList
+
+                    var cloneWithSameFragments =
+                        currentList.Find(clone => clone.Exists(fragment => comparedList.Exists(clone2 =>
+                            clone2.Exists(fragment2 => fragment2.Position == fragment.Position))));
+
+                    if (cloneWithSameFragments != null)
                     {
-                        tmp[0] = d[i - 1, j] + 1;
-                        tmp[1] = d[i, j - 1] + 1;
-                        tmp[2] = d[i - 1, j - 1] + 1;
-                        d[i, j] = tmp.Min();
+                        foundIntersection = true;
+                        var currentListValue = currentList.Count * cloneWithSameFragments.Count * cloneWithSameFragments.Count;
+                        var secondClone = comparedList.Find(clone2 =>
+                            clone2.Exists(fragment2 => cloneWithSameFragments.Exists(fragment => fragment2.Position == fragment.Position)));
+                        var comparedListValue = comparedList.Count * secondClone.Count * secondClone.Count;
+
+                        var list = currentListValue >= comparedListValue ? currentList : comparedList;
+                        result.Add(list);
+                        var addedListId = currentListValue >= comparedListValue ? i : j;
+                        excludedFromSearch.Add(i);
+                        excludedFromSearch.Add(j);
+                        break;
+                        //somehow we should collect right lists into one result
                     }
-                    else
-                    {
-                        d[i, j] = d[i - 1, j - 1];
-                    }
+                }
+
+                if (!foundIntersection)
+                {
+                    result.Add(currentList);
+                    excludedFromSearch.Add(i);
                 }
             }
 
-            return d[_fragmentSize - 1, _fragmentSize - 1] <= _fragmentSize / 2;
+            return result;
         }
 
         private void RestoreXml()
