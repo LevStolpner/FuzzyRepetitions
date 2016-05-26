@@ -16,7 +16,7 @@ namespace FuzzyMatching
         private readonly int _fragmentSize;
         private readonly int _numberOfDifferences;
         private readonly int _hashFragmentDifference;
-        private readonly int[,] _d;
+        private readonly int[][] _d;
 
         public CloneFinder(string documentName, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference)
         {
@@ -26,13 +26,14 @@ namespace FuzzyMatching
                 _fragmentSize = sizeOfFragment;
                 _numberOfDifferences = numberOfDifferences;
                 _hashFragmentDifference = hashFragmentDifference;
-                _d = new int[_fragmentSize, _fragmentSize];
+                _d = new int[_fragmentSize][];
 
                 for (var i = 0; i < _fragmentSize; i++)
                 {
+                    _d[i] = new int[_fragmentSize];
                     for (var j = 0; j < _fragmentSize; j++)
                     {
-                        _d[i, j] = _fragmentSize * 100;        //this table is needed for fast algorithm, calculating edit distance
+                        _d[i][j] = _fragmentSize * 100;        //this table is needed for fast algorithm, calculating edit distance
                     }
                 }
             }
@@ -187,10 +188,8 @@ namespace FuzzyMatching
 
         private bool CompareFragments(Fragment first, Fragment second)
         {
-            lock (this)
-            {
-                var d = _d;
-                d[0, 0] = 0;
+                var d = _d.Select(a => a.ToArray()).ToArray();
+                d[0][0] = 0;
                 var tmp = new int[3];
                 var p = _fragmentSize / 4;
 
@@ -199,16 +198,14 @@ namespace FuzzyMatching
                     var border = Math.Min(_fragmentSize, i + p);
                     for (var j = Math.Max(1, i - p); j < border; j++)
                     {
-                        tmp[0] = first.Words[i] == second.Words[j] ? d[i - 1, j - 1] : d[i - 1, j - 1] + 1;
-
-                        tmp[1] = d[i - 1, j] + 1;
-                        tmp[2] = d[i, j - 1] + 1;
-                        d[i, j] = tmp.Min();
+                        tmp[0] = first.Words[i] == second.Words[j] ? d[i - 1][j - 1] : d[i - 1][j - 1] + 1;
+                        tmp[1] = d[i - 1][j] + 1;
+                        tmp[2] = d[i][j - 1] + 1;
+                        d[i][j] = tmp.Min();
                     }
                 }
 
-                return d[_fragmentSize - 1, _fragmentSize - 1] <= _numberOfDifferences;
-            }
+                return d[_fragmentSize - 1][_fragmentSize - 1] <= _numberOfDifferences;
         }
 
         private List<List<Fragment>> Group(List<List<Fragment>> fragments)
