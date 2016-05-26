@@ -66,22 +66,20 @@ namespace FuzzyMatching
             {
                 var text = ConvertXmlToText(_documentName, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
                 var fragments = Preprocess(text);
-                var a = DateTime.Now;
                 var fragments2 = new Fragment[fragments.Length];
-                for (var i = 0; i < fragments2.Length; i++)
-                {
-                    fragments2[i] = fragments[i];
-                }
-                var clones = FindClones(fragments.ToList(), 0, fragments.Length);
+                Array.Copy(fragments, fragments2, fragments.Length);
+                var a = DateTime.Now;
 
-                //var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
-                //var secondTask = Task.Factory.StartNew(() => FindClones(fragments2.ToList(), fragments.Length / 3 + 1, fragments.Length));
-                //Task.WaitAll(firstTask, secondTask);
-                //var clones = firstTask.Result;
-                //var clones2 = secondTask.Result;
-                //clones.AddRange(clones2);
+                //var clones = FindClones(fragments.ToList(), 0, fragments.Length);
 
+                var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
+                var secondTask = Task.Factory.StartNew(() => FindClones(fragments2.ToList(), fragments.Length / 3 + 1, fragments.Length));
+                Task.WaitAll(firstTask, secondTask);
+                var clones = firstTask.Result;
+                var clones2 = secondTask.Result;
+                clones.AddRange(clones2);
                 Console.WriteLine(DateTime.Now - a);
+
                 var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
                 var newGroupedClones = DeleteIntersections(expandedClones);
                 var numberOfGroups = newGroupedClones.Count;
@@ -152,11 +150,12 @@ namespace FuzzyMatching
             return FragmentText(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries), newText);
         }
 
-        private List<List<Fragment>> FindClones(List<Fragment> fragments, int searchStartPosition, int searchStopPosition)
+        private List<List<Fragment>> FindClones(List<Fragment> fragments, int searchStartPosition,
+            int searchStopPosition)
         {
             if (fragments == null) return null;
-
             var cloneStorage = new List<List<Fragment>>();
+
             var length = fragments.Count;
 
             for (var i = searchStartPosition; i < searchStopPosition; i++)
@@ -188,24 +187,28 @@ namespace FuzzyMatching
 
         private bool CompareFragments(Fragment first, Fragment second)
         {
-            var d = _d;
-            d[0, 0] = 0;
-            var tmp = new int[3];
-            var p = _fragmentSize / 4;
-
-            for (var i = 1; i < _fragmentSize; i++)
+            lock (this)
             {
-                var border = Math.Min(_fragmentSize, i + p);
-                for (var j = Math.Max(1, i - p); j < border; j++)
-                {
-                    tmp[0] = first.Words[i] == second.Words[j] ? d[i - 1, j - 1] : d[i - 1, j - 1] + 1;
-                    tmp[1] = d[i - 1, j] + 1;
-                    tmp[2] = d[i, j - 1] + 1;
-                    d[i, j] = tmp.Min();
-                }
-            }
+                var d = _d;
+                d[0, 0] = 0;
+                var tmp = new int[3];
+                var p = _fragmentSize / 4;
 
-            return d[_fragmentSize - 1, _fragmentSize - 1] <= _numberOfDifferences;
+                for (var i = 1; i < _fragmentSize; i++)
+                {
+                    var border = Math.Min(_fragmentSize, i + p);
+                    for (var j = Math.Max(1, i - p); j < border; j++)
+                    {
+                        tmp[0] = first.Words[i] == second.Words[j] ? d[i - 1, j - 1] : d[i - 1, j - 1] + 1;
+
+                        tmp[1] = d[i - 1, j] + 1;
+                        tmp[2] = d[i, j - 1] + 1;
+                        d[i, j] = tmp.Min();
+                    }
+                }
+
+                return d[_fragmentSize - 1, _fragmentSize - 1] <= _numberOfDifferences;
+            }
         }
 
         private List<List<Fragment>> Group(List<List<Fragment>> fragments)
