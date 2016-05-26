@@ -1,10 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
-using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Xml;
 using LemmaSharp;
@@ -14,28 +10,28 @@ namespace FuzzyMatching
 {
     public class CloneFinder
     {
-        private const int HashLength = 9;
         private readonly string _documentName;
         private XmlDocument _document;
         private readonly int _fragmentSize;
+        private readonly int _numberOfDifferences;
+        private readonly int _hashFragmentDifference;
         private readonly int[,] _d;
-        private int[] _numbers; //TODO: find a way not to store it here
-        private List<string> _alphabet = new List<string>();
-        private int _lastFragmentPosition;
 
-        public CloneFinder(string documentName, int sizeOfFragment)
+        public CloneFinder(string documentName, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference)
         {
             if (!String.IsNullOrEmpty(documentName))
             {
                 _documentName = documentName;
                 _fragmentSize = sizeOfFragment;
+                _numberOfDifferences = numberOfDifferences;
+                _hashFragmentDifference = hashFragmentDifference;
                 _d = new int[_fragmentSize, _fragmentSize];
 
                 for (var i = 0; i < _fragmentSize; i++)
                 {
                     for (var j = 0; j < _fragmentSize; j++)
                     {
-                        _d[i, j] = _fragmentSize * 100;
+                        _d[i, j] = _fragmentSize * 100;        //this table is needed for fast algorithm, calculating edit distance
                     }
                 }
             }
@@ -45,72 +41,52 @@ namespace FuzzyMatching
             }
         }
 
-        private struct Word
-        {
-            public string Value;
-            public int NumberInAlphabet;
-
-            public Word(string word, int number)
-            {
-                Value = word;
-                NumberInAlphabet = number;
-            }
-        }
-
         private class Fragment
         {
-            public int Position;
-            public int Length;
-            public int HashValue;
+            public readonly int Position;
+            public readonly int HashValue;
             public Fragment(int position)
             {
                 Position = position;
-                Length = 1;
+                HashValue = 0;
             }
             public Fragment(int position, int hash)
             {
                 Position = position;
-                Length = 1;
                 HashValue = hash;
+            }
+        }
+
+        private class PreprocessedText
+        {
+            public readonly string Text;
+            public readonly int[] NewText;
+            public PreprocessedText(string text, int[] newText)
+            {
+                Text = text;
+                NewText = newText;
             }
         }
 
         public void Run()
         {
-            Console.WriteLine("Loading XML-document...");
-
             if (TryLoadXmlDocument())
             {
-                Console.WriteLine("XML document was loaded");
                 var text = ConvertXmlToText(_documentName, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
-                Console.WriteLine("XML was transformed to plain text");
-
-                text = Preprocess(text);
-                Console.WriteLine("Text was preprocessed");
-
-                var fragments = Split(text);
-                _lastFragmentPosition = fragments.Last().Position;
-                Console.WriteLine("Text was splitted into fragments");
-
+                var preprocessedText = Preprocess(text);
+                var fragments = Split(preprocessedText.Text);
                 var a = DateTime.Now;
-                var clones = FindClones(fragments);
-                Console.WriteLine("All segments were compared");
+                var clones = FindClones(fragments, preprocessedText.NewText);
                 Console.WriteLine(DateTime.Now - a);
-
-                var groupedClones = GroupAndExpand(clones);
-                Console.WriteLine("All clones were grouped and expanded");
-
+                var groupedClones = GroupAndExpand(clones, preprocessedText.NewText, fragments.Last().Position);
                 var newGroupedClones = DeleteIntersections(groupedClones);
-                Console.WriteLine("Intersections were deleted.");
                 var numberOfGroups = newGroupedClones.Count;
                 var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
                 var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
                 Console.WriteLine("Statistics: \n");
                 Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
                 Console.ReadLine();
-
                 RestoreXml();
-                Console.WriteLine("Formatting was restored");
             }
             else
             {
@@ -130,6 +106,7 @@ namespace FuzzyMatching
             }
             catch (Exception e)
             {
+                Console.WriteLine(e.Message);
                 return false;
             }
         }
@@ -167,7 +144,7 @@ namespace FuzzyMatching
             }
         }
 
-        private string Preprocess(string text)
+        private PreprocessedText Preprocess(string text)
         {
             if (String.IsNullOrEmpty(text)) return null;
 
@@ -193,15 +170,14 @@ namespace FuzzyMatching
             }
 
             alphabet.Sort();
-            _alphabet = alphabet;
-            _numbers = new int[length];
+            var numbers = new int[length];
 
             for (var i = 0; i < length; i++)
             {
-                _numbers[i] = alphabet.BinarySearch(0, alphabet.Count, words[i], Comparer<string>.Default);
+                numbers[i] = alphabet.BinarySearch(0, alphabet.Count, words[i], Comparer<string>.Default);
             }
 
-            return preprocessedText.ToString();
+            return new PreprocessedText(preprocessedText.ToString(), numbers);
         }
 
         private Fragment[] Split(string text)
@@ -216,10 +192,10 @@ namespace FuzzyMatching
 
             for (int i = 0, k = 0; i < length; i += _fragmentSize, k++)
             {
-                var symbols = new char[_fragmentSize * 2 / 3]; //TODO:remove hardcode
+                var symbols = new char[_fragmentSize];
 
                 if (k >= numberOfFragments) break;
-                for (var j = i; j < i + _fragmentSize * 2 / 3; j++)
+                for (var j = i; j < i + _fragmentSize; j++)
                 {
                     if (j < length)
                         symbols[j - i] = words[j][0];
@@ -287,7 +263,7 @@ namespace FuzzyMatching
             return hash;
         }
 
-        private List<List<Fragment>> FindClones(Fragment[] fragments)
+        private List<List<Fragment>> FindClones(Fragment[] fragments, int[] newText)
         {
             if (fragments == null) return null;
 
@@ -304,7 +280,7 @@ namespace FuzzyMatching
                     counter++;
                     if (!CompareHashes(fragments[i].HashValue, fragments[j].HashValue)) continue;
                     counter2++;
-                    if (!CompareFragments(fragments[i].Position, fragments[j].Position)) continue;
+                    if (!CompareFragments(fragments[i].Position, fragments[j].Position, newText)) continue;
 
                     cloneStorage.Add(new List<Fragment> { fragments[i], fragments[j] });
                     counter3++;
@@ -326,10 +302,10 @@ namespace FuzzyMatching
                 diff &= (diff - 1);
             }
 
-            return count <= HashLength / 4; //TODO: this parameter should be a setting
+            return count <= _hashFragmentDifference;
         }
 
-        private bool CompareFragments(int firstPosition, int secondPosition)
+        private bool CompareFragments(int firstPosition, int secondPosition, int[] newText)
         {
             var d = _d;
             d[0, 0] = 0;
@@ -341,21 +317,19 @@ namespace FuzzyMatching
                 var border = Math.Min(_fragmentSize, i + p);
                 for (var j = Math.Max(1, i - p); j < border; j++)
                 {
-                    tmp[0] = _numbers[firstPosition + i] == _numbers[secondPosition + j] ? d[i - 1, j - 1] : d[i - 1, j - 1] + 1;
+                    tmp[0] = newText[firstPosition + i] == newText[secondPosition + j] ? d[i - 1, j - 1] : d[i - 1, j - 1] + 1;
                     tmp[1] = d[i - 1, j] + 1;
                     tmp[2] = d[i, j - 1] + 1;
                     d[i, j] = tmp.Min();
                 }
             }
 
-            return d[_fragmentSize - 1, _fragmentSize - 1] <= _fragmentSize / 5;
+            return d[_fragmentSize - 1, _fragmentSize - 1] <= _numberOfDifferences;
         }
 
-        private List<List<List<Fragment>>> GroupAndExpand(List<List<Fragment>> fragments)
+        private List<List<List<Fragment>>> GroupAndExpand(List<List<Fragment>> fragments, int[] newText, int lastFragmentPosition)
         {
-            var a = Group(fragments).Select(Expand).ToList();
-
-            return a;
+            return Group(fragments).Select(x => Expand(x, lastFragmentPosition, newText)).ToList();
         }
 
         private List<List<Fragment>> Group(List<List<Fragment>> fragments)
@@ -423,7 +397,7 @@ namespace FuzzyMatching
             return false;
         }
 
-        private List<List<Fragment>> Expand(List<Fragment> fragments)
+        private List<List<Fragment>> Expand(List<Fragment> fragments, int lastFragmentPosition, int[] newText)
         {
             var expandLeft = true;
             var expandRight = true;
@@ -434,7 +408,7 @@ namespace FuzzyMatching
             {
                 for (var i = 0; i < result.Count - 1; i++)
                 {
-                    if (CompareFragments(result[i].First().Position - _fragmentSize, result[i + 1].First().Position - _fragmentSize)) continue;
+                    if (CompareFragments(result[i].First().Position - _fragmentSize, result[i + 1].First().Position - _fragmentSize, newText)) continue;
                     expandLeft = false;
                     break;
                 }
@@ -446,11 +420,11 @@ namespace FuzzyMatching
                 }
             }
 
-            while (expandRight && result.TrueForAll(x => x.Last().Position + _fragmentSize <= _lastFragmentPosition))
+            while (expandRight && result.TrueForAll(x => x.Last().Position + _fragmentSize <= lastFragmentPosition))
             {
                 for (var i = 0; i < fragments.Count - 1; i++)
                 {
-                    if (CompareFragments(result[i].Last().Position + _fragmentSize, result[i + 1].Last().Position + _fragmentSize)) continue;
+                    if (CompareFragments(result[i].Last().Position + _fragmentSize, result[i + 1].Last().Position + _fragmentSize, newText)) continue;
                     expandRight = false;
                     break;
                 }
@@ -497,11 +471,9 @@ namespace FuzzyMatching
 
                         var list = currentListValue >= comparedListValue ? currentList : comparedList;
                         result.Add(list);
-                        var addedListId = currentListValue >= comparedListValue ? i : j;
                         excludedFromSearch.Add(i);
                         excludedFromSearch.Add(j);
                         break;
-                        //somehow we should collect right lists into one result
                     }
                 }
 
@@ -522,19 +494,19 @@ namespace FuzzyMatching
             _document.Save(_documentName);
         }
 
-        private void SaveStringToFile(string textToSave)
-        {
-            try
-            {
-                using (var streamWriter = new StreamWriter(_documentName))
-                {
-                    streamWriter.Write(textToSave);
-                }
-            }
-            catch (Exception e)
-            {
-                throw new Exception(e.Message);
-            }
-        }
+        //private void SaveStringToFile(string textToSave)
+        //{
+        //    try
+        //    {
+        //        using (var streamWriter = new StreamWriter(_documentName))
+        //        {
+        //            streamWriter.Write(textToSave);
+        //        }
+        //    }
+        //    catch (Exception e)
+        //    {
+        //        throw new Exception(e.Message);
+        //    }
+        //}
     }
 }
