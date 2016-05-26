@@ -75,11 +75,9 @@ namespace FuzzyMatching
                 var text = ConvertXmlToText(_documentName, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
                 var preprocessedText = Preprocess(text);
                 var fragments = Split(preprocessedText.Text);
-                var a = DateTime.Now;
                 var clones = FindClones(fragments, preprocessedText.NewText);
-                Console.WriteLine(DateTime.Now - a);
-                var groupedClones = GroupAndExpand(clones, preprocessedText.NewText, fragments.Last().Position);
-                var newGroupedClones = DeleteIntersections(groupedClones);
+                var expandedClones = Group(clones).Select(x => Expand(x, fragments.Last().Position, preprocessedText.NewText)).ToList();
+                var newGroupedClones = DeleteIntersections(expandedClones);
                 var numberOfGroups = newGroupedClones.Count;
                 var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
                 var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
@@ -158,7 +156,7 @@ namespace FuzzyMatching
 
             for (var i = 0; i < words.Length; i++)
             {
-                var newWord = stemmer.Stem(lemmatizer.Lemmatize(words[i].ToLower()));
+                var newWord = stemmer.Stem(lemmatizer.Lemmatize(words[i].ToLower())); //firstly the words are lemmatized, then stemmed
                 words[i] = newWord;
                 preprocessedText.Append(newWord);
                 preprocessedText.Append(' ');
@@ -174,7 +172,7 @@ namespace FuzzyMatching
 
             for (var i = 0; i < length; i++)
             {
-                numbers[i] = alphabet.BinarySearch(0, alphabet.Count, words[i], Comparer<string>.Default);
+                numbers[i] = alphabet.BinarySearch(0, alphabet.Count, words[i], Comparer<string>.Default); //convert text to numbers from new alphabet
             }
 
             return new PreprocessedText(preprocessedText.ToString(), numbers);
@@ -188,7 +186,6 @@ namespace FuzzyMatching
             var length = words.Length;
             var numberOfFragments = length / _fragmentSize;
             var arrayOfFragments = new Fragment[numberOfFragments];
-            //last fragment should be worked with after the loop to remove if conditions
 
             for (int i = 0, k = 0; i < length; i += _fragmentSize, k++)
             {
@@ -263,7 +260,7 @@ namespace FuzzyMatching
             return hash;
         }
 
-        private List<List<Fragment>> FindClones(Fragment[] fragments, int[] newText)
+        private List<List<Fragment>> FindClones(Fragment[] fragments, int[] newText) //TODO: join fragments and int[]: store numbers(int[]) in fragments
         {
             if (fragments == null) return null;
 
@@ -275,7 +272,7 @@ namespace FuzzyMatching
 
             for (var i = 0; i < length; i++)
             {
-                for (var j = i + 1; j < length; j += 1)   //if overlap, step should be different (soo, no overlap?)
+                for (var j = i + 1; j < length; j += 1)
                 {
                     counter++;
                     if (!CompareHashes(fragments[i].HashValue, fragments[j].HashValue)) continue;
@@ -327,15 +324,17 @@ namespace FuzzyMatching
             return d[_fragmentSize - 1, _fragmentSize - 1] <= _numberOfDifferences;
         }
 
-        private List<List<List<Fragment>>> GroupAndExpand(List<List<Fragment>> fragments, int[] newText, int lastFragmentPosition)
-        {
-            return Group(fragments).Select(x => Expand(x, lastFragmentPosition, newText)).ToList();
-        }
-
         private List<List<Fragment>> Group(List<List<Fragment>> fragments)
         {
             var firstList = fragments;
             var secondList = new List<List<Fragment>>();
+
+            //algorithm of grouping:
+            //firstly, we look through list of groups (in beginning just pairs)
+            //then, we regroup into new list of groups, joining pairs if they have common fragment
+            //after that, here we go again: look through list of new groups and regroup again
+            //we do that until we have list of groups, which doesn't have any common elements
+            //after that grouping we can expand fragments in groups by Expand method
 
             while (Undistributed(firstList))
             {
@@ -372,17 +371,11 @@ namespace FuzzyMatching
             }
 
             return firstList;
-
-            //algorithm of grouping:
-            //first, we look through list of groups (firstly it is pairs)
-            //then, we regroup into new list of groups, adding pairs into one group if they have common fragment
-            //after that, here we go again: look through list of new groups and regroup again
-            //we do that until we have list of groups, which doesn't have any common elements
-            //after that grouping we can expand fragments in groups by Expand method
         }
 
         private bool Undistributed(List<List<Fragment>> list)
         {
+            //this function checks in list of groups of clones, if different groups have same fragment
             for (var i = 0; i < list.Count; i++)
             {
                 for (var j = i + 1; j < list.Count; j++)
@@ -402,10 +395,12 @@ namespace FuzzyMatching
             var expandLeft = true;
             var expandRight = true;
 
-            var result = fragments.Select(t => new List<Fragment> { t }).ToList(); //now we have to expand lists of these fragments
+            var result = fragments.Select(t => new List<Fragment> { t }).ToList();
 
+            //comparing neighbour fragments from the left
             while (expandLeft && result.TrueForAll(x => x.First().Position - _fragmentSize >= 0))
             {
+                //code below checks if we can expand to the left, because if some elements of the group cannot, expanding to left stops
                 for (var i = 0; i < result.Count - 1; i++)
                 {
                     if (CompareFragments(result[i].First().Position - _fragmentSize, result[i + 1].First().Position - _fragmentSize, newText)) continue;
@@ -419,9 +414,10 @@ namespace FuzzyMatching
                     t.Insert(0, new Fragment(t.First().Position - _fragmentSize));
                 }
             }
-
+            //comparing neighbour fragments from the right
             while (expandRight && result.TrueForAll(x => x.Last().Position + _fragmentSize <= lastFragmentPosition))
             {
+                //code below checks if we can expand to the right, because if some elements of the group cannot, expanding to right stops
                 for (var i = 0; i < fragments.Count - 1; i++)
                 {
                     if (CompareFragments(result[i].Last().Position + _fragmentSize, result[i + 1].Last().Position + _fragmentSize, newText)) continue;
@@ -441,6 +437,7 @@ namespace FuzzyMatching
 
         private List<List<List<Fragment>>> DeleteIntersections(List<List<List<Fragment>>> groupedFragments)
         {
+            //after regrouping some groups may have same sequence of fragments, thus one of conflicted groups of clones should be removed
             var result = new List<List<List<Fragment>>>();
             var excludedFromSearch = new List<int>();
 
@@ -463,6 +460,7 @@ namespace FuzzyMatching
 
                     if (cloneWithSameFragments != null)
                     {
+                        //now function m*n^2 will show, which of groups should be deleted, where m = size of group, n = size of clone in fragments
                         foundIntersection = true;
                         var currentListValue = currentList.Count * cloneWithSameFragments.Count * cloneWithSameFragments.Count;
                         var secondClone = comparedList.Find(clone2 =>
@@ -471,14 +469,15 @@ namespace FuzzyMatching
 
                         var list = currentListValue >= comparedListValue ? currentList : comparedList;
                         result.Add(list);
-                        excludedFromSearch.Add(i);
-                        excludedFromSearch.Add(j);
-                        break;
+                        excludedFromSearch.Add(i); //exclude fragments from search, which had conflicted already
+                        excludedFromSearch.Add(j); //maybde TODO: not include in this lists groups in case there are 3 or more groups with same fragments
+                        break;                     //TODO: exclude only groups, lost in competition :) others should go on
                     }
                 }
 
                 if (!foundIntersection)
                 {
+                    //if there are no intersections for current list, we exclude it from farther search and add to the result
                     result.Add(currentList);
                     excludedFromSearch.Add(i);
                 }
