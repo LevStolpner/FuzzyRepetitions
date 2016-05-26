@@ -44,15 +44,17 @@ namespace FuzzyMatching
         private class Fragment
         {
             public readonly int Position;
+            public readonly int[] Words;
             public readonly int HashValue;
             public Fragment(int position)
             {
                 Position = position;
                 HashValue = 0;
             }
-            public Fragment(int position, int hash)
+            public Fragment(int position, int[] words, int hash)
             {
                 Position = position;
+                Words = words;
                 HashValue = hash;
             }
         }
@@ -74,9 +76,9 @@ namespace FuzzyMatching
             {
                 var text = ConvertXmlToText(_documentName, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
                 var preprocessedText = Preprocess(text);
-                var fragments = Split(preprocessedText.Text);
-                var clones = FindClones(fragments, preprocessedText.NewText);
-                var expandedClones = Group(clones).Select(x => Expand(x, fragments.Last().Position, preprocessedText.NewText)).ToList();
+                var fragments = Split(preprocessedText.Text, preprocessedText.NewText);
+                var clones = FindClones(fragments);
+                var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
                 var newGroupedClones = DeleteIntersections(expandedClones);
                 var numberOfGroups = newGroupedClones.Count;
                 var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
@@ -178,27 +180,28 @@ namespace FuzzyMatching
             return new PreprocessedText(preprocessedText.ToString(), numbers);
         }
 
-        private Fragment[] Split(string text)
+        private Fragment[] Split(string text, int[] newText)
         {
             if (String.IsNullOrEmpty(text)) return null;
 
             var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            var length = words.Length;
-            var numberOfFragments = length / _fragmentSize;
+            var wordsLength = words.Length;
+            var numberOfFragments = wordsLength / _fragmentSize;
             var arrayOfFragments = new Fragment[numberOfFragments];
 
-            for (int i = 0, k = 0; i < length; i += _fragmentSize, k++)
+            for (int i = 0, k = 0; i < wordsLength; i += _fragmentSize, k++)
             {
                 var symbols = new char[_fragmentSize];
+                var numbers = new int[_fragmentSize];
 
                 if (k >= numberOfFragments) break;
                 for (var j = i; j < i + _fragmentSize; j++)
                 {
-                    if (j < length)
-                        symbols[j - i] = words[j][0];
+                    numbers[j - i] = newText[j];
+                    if (j < wordsLength) symbols[j - i] = words[j][0];
                 }
 
-                arrayOfFragments[k] = new Fragment(i, Hash(symbols));
+                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols));
             }
 
             return arrayOfFragments;
@@ -260,7 +263,7 @@ namespace FuzzyMatching
             return hash;
         }
 
-        private List<List<Fragment>> FindClones(Fragment[] fragments, int[] newText) //TODO: join fragments and int[]: store numbers(int[]) in fragments
+        private List<List<Fragment>> FindClones(Fragment[] fragments)
         {
             if (fragments == null) return null;
 
@@ -277,7 +280,7 @@ namespace FuzzyMatching
                     counter++;
                     if (!CompareHashes(fragments[i].HashValue, fragments[j].HashValue)) continue;
                     counter2++;
-                    if (!CompareFragments(fragments[i].Position, fragments[j].Position, newText)) continue;
+                    if (!CompareFragments(fragments[i], fragments[j])) continue;
 
                     cloneStorage.Add(new List<Fragment> { fragments[i], fragments[j] });
                     counter3++;
@@ -302,19 +305,19 @@ namespace FuzzyMatching
             return count <= _hashFragmentDifference;
         }
 
-        private bool CompareFragments(int firstPosition, int secondPosition, int[] newText)
+        private bool CompareFragments(Fragment first, Fragment second)
         {
             var d = _d;
             d[0, 0] = 0;
             var tmp = new int[3];
-            int p = _fragmentSize / 4;
+            var p = _fragmentSize / 4;
 
             for (var i = 1; i < _fragmentSize; i++)
             {
                 var border = Math.Min(_fragmentSize, i + p);
                 for (var j = Math.Max(1, i - p); j < border; j++)
                 {
-                    tmp[0] = newText[firstPosition + i] == newText[secondPosition + j] ? d[i - 1, j - 1] : d[i - 1, j - 1] + 1;
+                    tmp[0] = first.Words[i] == second.Words[j] ? d[i - 1, j - 1] : d[i - 1, j - 1] + 1;
                     tmp[1] = d[i - 1, j] + 1;
                     tmp[2] = d[i, j - 1] + 1;
                     d[i, j] = tmp.Min();
@@ -390,20 +393,21 @@ namespace FuzzyMatching
             return false;
         }
 
-        private List<List<Fragment>> Expand(List<Fragment> fragments, int lastFragmentPosition, int[] newText)
+        private List<List<Fragment>> Expand(List<Fragment> groupOFragments, Fragment[] allFragments)
         {
             var expandLeft = true;
             var expandRight = true;
-
-            var result = fragments.Select(t => new List<Fragment> { t }).ToList();
+            var lastFragmentPosition = allFragments[allFragments.Length - 1].Position;
+            var result = groupOFragments.Select(t => new List<Fragment> { t }).ToList();
 
             //comparing neighbour fragments from the left
-            while (expandLeft && result.TrueForAll(x => x.First().Position - _fragmentSize >= 0))
+            while (expandLeft && result.TrueForAll(x => x.First().Position - 1 >= 0))
             {
                 //code below checks if we can expand to the left, because if some elements of the group cannot, expanding to left stops
                 for (var i = 0; i < result.Count - 1; i++)
                 {
-                    if (CompareFragments(result[i].First().Position - _fragmentSize, result[i + 1].First().Position - _fragmentSize, newText)) continue;
+                    if (CompareFragments(allFragments.First(x => x.Position == result[i].First().Position - 1),
+                        allFragments.First(x => x.Position == result[i + 1].First().Position - 1))) continue;
                     expandLeft = false;
                     break;
                 }
@@ -415,12 +419,13 @@ namespace FuzzyMatching
                 }
             }
             //comparing neighbour fragments from the right
-            while (expandRight && result.TrueForAll(x => x.Last().Position + _fragmentSize <= lastFragmentPosition))
+            while (expandRight && result.TrueForAll(x => x.Last().Position + 1 <= lastFragmentPosition))
             {
                 //code below checks if we can expand to the right, because if some elements of the group cannot, expanding to right stops
-                for (var i = 0; i < fragments.Count - 1; i++)
+                for (var i = 0; i < result.Count - 1; i++)
                 {
-                    if (CompareFragments(result[i].Last().Position + _fragmentSize, result[i + 1].Last().Position + _fragmentSize, newText)) continue;
+                    if (CompareFragments(allFragments.First(x => x.Position == result[i].Last().Position + 1),
+                        allFragments.First(x => x.Position == result[i + 1].Last().Position + 1))) continue;
                     expandRight = false;
                     break;
                 }
@@ -428,7 +433,7 @@ namespace FuzzyMatching
                 if (!expandRight) continue;
                 foreach (var t in result)
                 {
-                    t.Add(new Fragment(t.Last().Position + _fragmentSize));
+                    t.Add(new Fragment(t.Last().Position + 1));
                 }
             }
 
