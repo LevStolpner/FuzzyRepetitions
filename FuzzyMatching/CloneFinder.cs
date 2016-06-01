@@ -11,35 +11,41 @@ namespace FuzzyMatching
 {
     public class CloneFinder
     {
+        private const int HashLength = 9;
         private readonly string _documentName;
         private XmlDocument _document;
+
         private readonly int _fragmentSize;
-        private readonly int _numberOfDifferences;
-        private readonly int _hashFragmentDifference;
-        private readonly int[][] _d;
+        private readonly int _numberOfDifferences;           //parameter for maximal edit distance between fragments
+        private readonly int _hashFragmentDifference;        //parameter for hash value difference between fragments
+
+        private readonly int[][] _d;                         //table, which will be used for fast calculating edit distance algorithm
 
         public CloneFinder(string documentName, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference)
         {
-            if (!String.IsNullOrEmpty(documentName))
-            {
-                _documentName = documentName;
-                _fragmentSize = sizeOfFragment;
-                _numberOfDifferences = numberOfDifferences;
-                _hashFragmentDifference = hashFragmentDifference;
-                _d = new int[_fragmentSize][];
-
-                for (var i = 0; i < _fragmentSize; i++)
-                {
-                    _d[i] = new int[_fragmentSize];
-                    for (var j = 0; j < _fragmentSize; j++)
-                    {
-                        _d[i][j] = _fragmentSize * 100;        //this table is needed for fast algorithm, calculating edit distance
-                    }
-                }
-            }
-            else
+            if (String.IsNullOrEmpty(documentName))
             {
                 throw new ArgumentNullException("documentName");
+            }
+            if (sizeOfFragment <= 0 || numberOfDifferences <= 0 || hashFragmentDifference <= 0 ||
+                sizeOfFragment <= numberOfDifferences || hashFragmentDifference >= HashLength)
+            {
+                throw new Exception("Incorrect arguments");
+            }
+
+            _documentName = documentName;
+            _fragmentSize = sizeOfFragment;
+            _numberOfDifferences = numberOfDifferences;
+            _hashFragmentDifference = hashFragmentDifference;
+            _d = new int[_fragmentSize][];
+
+            for (var i = 0; i < _fragmentSize; i++)
+            {
+                _d[i] = new int[_fragmentSize];
+                for (var j = 0; j < _fragmentSize; j++)
+                {
+                    _d[i][j] = _fragmentSize * 100;        //initializing table with big numbers for needs of algorithm
+                }
             }
         }
 
@@ -61,42 +67,45 @@ namespace FuzzyMatching
             }
         }
 
-        public void Run()
+        public void Run(bool isMultithreaded)
         {
             if (TryLoadXmlDocument())
             {
                 var text = ConvertXmlToText(_documentName, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
-                var fragments = Preprocess(text);
-                var fragments2 = new Fragment[fragments.Length];
-                Array.Copy(fragments, fragments2, fragments.Length);
+                var fragments = Preprocess(text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments
+                List<List<Fragment>> clones;
+
                 var a = DateTime.Now;
-
-                //var clones = FindClones(fragments.ToList(), 0, fragments.Length);
-
-                var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
-                var secondTask = Task.Factory.StartNew(() => FindClones(fragments2.ToList(), fragments.Length / 3 + 1, fragments.Length));
-                Task.WaitAll(firstTask, secondTask);
-                var clones = firstTask.Result;
-                var clones2 = secondTask.Result;
-                clones.AddRange(clones2);
+                if (isMultithreaded)                   //if true, two threads will be used to compare fragments, else - one thread
+                {
+                    //these two tasks compare clones from separate parts of fragmented text
+                    var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
+                    var secondTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), fragments.Length / 3 + 1, fragments.Length));
+                    Task.WaitAll(firstTask, secondTask);
+                    clones = firstTask.Result;
+                    clones.AddRange(secondTask.Result);
+                }
+                else
+                {
+                    clones = FindClones(fragments.ToList(), 0, fragments.Length);
+                }
                 Console.WriteLine(DateTime.Now - a);
-
+                //clone pairs are being gathered into groups of similar fragments, after that each of grouped clones gets expanded
                 var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
+                //expanded clones may have intersections between clones from different groups, so some of them are redundant
                 var newGroupedClones = DeleteIntersections(expandedClones);
+
                 var numberOfGroups = newGroupedClones.Count;
                 var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
                 var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
                 Console.WriteLine("Statistics: ");
                 Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
                 Console.ReadLine();
-                RestoreXml();
             }
             else
             {
-                Console.WriteLine("Could not read XML document. Probably it contains formatting mistakes.");
+                throw new Exception("Could not read XML document");
             }
-
-            Console.ReadLine();
         }
 
         private bool TryLoadXmlDocument()
@@ -116,56 +125,62 @@ namespace FuzzyMatching
 
         private string ConvertXmlToText(string documentName, XmlReaderSettings settings)
         {
-            if (_document == null) return null;
+            if (_document == null || String.IsNullOrEmpty(documentName) || settings == null)
+            {
+                throw new Exception("Incorrect parameters for converting XML-document");
+            }
 
-            try
-            {
-                return ReadDocument(documentName, settings);
-            }
-            catch (Exception e)
-            {
-                throw new Exception(e.Message);
-            }
+            return ReadDocument(documentName, settings);
         }
 
         private Fragment[] Preprocess(string text)
         {
-            if (String.IsNullOrEmpty(text)) return null;
+            if (String.IsNullOrEmpty(text))
+            {
+                throw new ArgumentNullException("text");
+            }
 
             var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
             var stemmer = new EnglishStemmer();
             var delimeters = new[] { ' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'', '/', '\\', '-', '+', '=', '*', '<', '>' };
-            var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries);
+            var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries);     //text is splitted by delimeters
             var alphabet = new List<string>();
-
-            var preprocessedText = NormalizeAndCreateAlphabet(words.ToList(), lemmatizer, stemmer, ref alphabet); //this part can be parallelized
-            var textInNumbers = ConvertTextWithNewAlphabet(words, alphabet);                                      //by splitting words in different lists
+            //this part can be parallelized by splitting words in different lists
+            var preprocessedText = NormalizeAndCreateAlphabet(words.ToList(), lemmatizer, stemmer, ref alphabet);
+            var textInNumbers = ConvertTextWithNewAlphabet(words, alphabet);    //instead of words in text there will be numbers (of word in alphabet)
 
             return Split(preprocessedText, textInNumbers);
         }
 
         private Fragment[] Split(string text, int[] newText)
         {
-            if (String.IsNullOrEmpty(text)) return null;
-
+            if (String.IsNullOrEmpty(text) || newText == null || newText.Length == 0)
+            {
+                throw new Exception("Incorrect parameters for splitting text to fragments");
+            }
+            //This method will return an array of Fragments
             return FragmentText(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries), newText);
         }
 
-        private List<List<Fragment>> FindClones(List<Fragment> fragments, int searchStartPosition,
-            int searchStopPosition)
+        private List<List<Fragment>> FindClones(List<Fragment> fragments, int searchStartPosition, int searchStopPosition)
         {
-            if (fragments == null) return null;
+            if (fragments == null || fragments.Count == 0 || searchStartPosition < 0 ||
+                searchStopPosition > fragments.Count || searchStartPosition >= searchStopPosition)
+            {
+                throw new Exception("Incorrect parameters for comparing clones");
+            }
+
             var cloneStorage = new List<List<Fragment>>();
-
             var length = fragments.Count;
-
+            //this loop will go through all fragments from start position to stop position and compare them to every other fragment in text
             for (var i = searchStartPosition; i < searchStopPosition; i++)
             {
                 for (var j = i + 1; j < length; j += 1)
                 {
+                    //first hashes from fragments are compared, if they are similar, then fragments are compared by calculating edit distance
                     if (!CompareHashes(fragments[i].HashValue, fragments[j].HashValue)) continue;
                     if (!CompareFragments(fragments[i], fragments[j])) continue;
-                    cloneStorage.Add(new List<Fragment> { fragments[i], fragments[j] });
+                    cloneStorage.Add(new List<Fragment> { fragments[i], fragments[j] }); //store found pairs of similar fragments
                 }
             }
 
@@ -188,29 +203,39 @@ namespace FuzzyMatching
 
         private bool CompareFragments(Fragment first, Fragment second)
         {
-                var d = _d.Select(a => a.ToArray()).ToArray();
-                d[0][0] = 0;
-                var tmp = new int[3];
-                var p = _fragmentSize / 4;
+            if (first == null || second == null)
+            {
+                throw new Exception("Null arguments while comparing fragments");
+            }
 
-                for (var i = 1; i < _fragmentSize; i++)
+            var d = _d.Select(a => a.ToArray()).ToArray(); //method needs a copy of initialized table
+            d[0][0] = 0;                                   //so there will be no problem with accessing same resource by threads
+            var tmp = new int[3];
+            var p = _fragmentSize / 4;
+            //algorithm, calculating edit distance between fragments
+            for (var i = 1; i < _fragmentSize; i++)
+            {
+                var border = Math.Min(_fragmentSize, i + p);
+                for (var j = Math.Max(1, i - p); j < border; j++)
                 {
-                    var border = Math.Min(_fragmentSize, i + p);
-                    for (var j = Math.Max(1, i - p); j < border; j++)
-                    {
-                        tmp[0] = first.Words[i] == second.Words[j] ? d[i - 1][j - 1] : d[i - 1][j - 1] + 1;
-                        tmp[1] = d[i - 1][j] + 1;
-                        tmp[2] = d[i][j - 1] + 1;
-                        d[i][j] = tmp.Min();
-                    }
+                    tmp[0] = first.Words[i] == second.Words[j] ? d[i - 1][j - 1] : d[i - 1][j - 1] + 1;
+                    tmp[1] = d[i - 1][j] + 1;
+                    tmp[2] = d[i][j - 1] + 1;
+                    d[i][j] = tmp.Min();
                 }
+            }
 
-                return d[_fragmentSize - 1][_fragmentSize - 1] <= _numberOfDifferences;
+            return d[_fragmentSize - 1][_fragmentSize - 1] <= _numberOfDifferences; //if edit distance is less than some threshold, method returns true
         }
 
         private List<List<Fragment>> Group(List<List<Fragment>> fragments)
         {
-            while (Undistributed(fragments))
+            if (fragments == null || fragments.Count == 0)
+            {
+                throw new ArgumentNullException("fragments");
+            }
+
+            while (Undistributed(fragments)) //if some groups have same fragments, they need to be grouped in one 
             {
                 fragments = RegroupClones(fragments);
             }
@@ -220,19 +245,31 @@ namespace FuzzyMatching
 
         private List<List<Fragment>> Expand(List<Fragment> groupOFragments, Fragment[] allFragments)
         {
-            var result = groupOFragments.Select(t => new List<Fragment> { t }).ToList();
+            if (groupOFragments == null || groupOFragments.Count == 0 || allFragments == null ||
+                allFragments.Length == 0)
+            {
+                throw new Exception("Null arguments while expanding groups");
+            }
 
-            return ExpandRight(ExpandLeft(result, allFragments), allFragments);
+            var result = groupOFragments.Select(t => new List<Fragment> { t }).ToList(); //instead of one fragment, clones will be a list of them
+
+            return ExpandRight(ExpandLeft(result, allFragments), allFragments);          //expanding groups in both directions
         }
 
         private List<List<List<Fragment>>> DeleteIntersections(List<List<List<Fragment>>> groupedFragments)
         {
+            if (groupedFragments == null || groupedFragments.Count == 0)
+            {
+                throw new ArgumentNullException("groupedFragments");
+            }
+
             //after regrouping some groups may have same sequence of fragments, thus one of conflicted groups of clones should be removed
             var result = new List<List<List<Fragment>>>();
             var excludedFromSearch = new List<int>();
 
             for (var i = 0; i < groupedFragments.Count; i++)
             {
+                //method will find and delete intersections with i-th group in list
                 result = DeleteIntersectionsOfGroup(result, i, groupedFragments, ref excludedFromSearch);
             }
 
@@ -243,6 +280,11 @@ namespace FuzzyMatching
 
         private string ReadDocument(string documentName, XmlReaderSettings settings)
         {
+            if (String.IsNullOrEmpty(documentName) || settings == null)
+            {
+                throw new Exception("Null parameters while reading XML-document");
+            }
+
             var sb = new StringBuilder();
 
             using (var reader = XmlReader.Create(documentName, settings))
@@ -254,7 +296,7 @@ namespace FuzzyMatching
                     sb.Append(' ');
                 }
             }
-
+            //replacing some symbols in text to decrease its size
             var replacingValues = new Dictionary<string, string> { { "\n", " " }, { "\t", " " }, { "   ", " " }, { "  ", " " } };
 
             foreach (var k in replacingValues.Keys)
@@ -267,6 +309,11 @@ namespace FuzzyMatching
 
         private string NormalizeAndCreateAlphabet(List<string> words, LemmatizerPrebuiltCompact lemmatizer, EnglishStemmer stemmer, ref List<string> alphabet)
         {
+            if (words == null || lemmatizer == null || stemmer == null)
+            {
+                throw new Exception("Null parameters while normalizing text");
+            }
+
             var preprocessedText = new StringBuilder();
 
             for (var i = 0; i < words.Count; i++)
@@ -278,17 +325,22 @@ namespace FuzzyMatching
 
                 if (alphabet.Find(x => x == newWord) == null)
                 {
-                    alphabet.Add(newWord);
+                    alphabet.Add(newWord);            //creating alphabet of words in text
                 }
             }
 
-            alphabet.Sort();
+            alphabet.Sort();                          //alphabet is sorted so other method could use it to convert words to numbers in text
 
             return preprocessedText.ToString();
         }
 
         private int[] ConvertTextWithNewAlphabet(string[] words, List<string> alphabet)
         {
+            if (words == null || alphabet == null)
+            {
+                throw new Exception("Null parameters while converting to plain text");
+            }
+
             var numbers = new int[words.Length];
 
             var length = words.Length;
@@ -303,6 +355,11 @@ namespace FuzzyMatching
 
         private Fragment[] FragmentText(string[] words, int[] newText)
         {
+            if (words == null || words.Length == 0 || newText == null || newText.Length == 0)
+            {
+                throw new Exception("Incorrect parameters for fragmenting text");
+            }
+
             var wordsLength = words.Length;
             var numberOfFragments = wordsLength / _fragmentSize;
             var arrayOfFragments = new Fragment[numberOfFragments];
@@ -315,11 +372,11 @@ namespace FuzzyMatching
                 if (k >= numberOfFragments) break;
                 for (var j = i; j < i + _fragmentSize; j++)
                 {
-                    numbers[j - i] = newText[j];
-                    if (j < wordsLength) symbols[j - i] = words[j][0];
+                    numbers[j - i] = newText[j];                            //numbers would represent words that are in current fragment
+                    if (j < wordsLength) symbols[j - i] = words[j][0];      //symbols are first letters of each word in fragment
                 }
 
-                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols));
+                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols));    //hash function uses array of first letters
             }
 
             return arrayOfFragments;
@@ -327,6 +384,7 @@ namespace FuzzyMatching
 
         private static int Hash(char[] symbols)
         {
+            //signature hashing: if array contains symbol from one of the groups below, some matched bit in hash value is set to 1 
             var hash = 0;
             foreach (var symbol in symbols)
             {
@@ -383,7 +441,12 @@ namespace FuzzyMatching
 
         private bool Undistributed(List<List<Fragment>> list)
         {
-            //this function checks in list of groups of clones, if different groups have same fragment
+            if (list == null)
+            {
+                throw new ArgumentNullException("list");
+            }
+
+            //this function checks list of groups of clones, if different groups have same fragment
             for (var i = 0; i < list.Count; i++)
             {
                 for (var j = i + 1; j < list.Count; j++)
@@ -400,13 +463,18 @@ namespace FuzzyMatching
 
         private List<List<Fragment>> RegroupClones(List<List<Fragment>> firstList)
         {
+            if (firstList == null)
+            {
+                throw new ArgumentNullException("firstList");
+            }
+
             //algorithm of grouping:
             //firstly, look through list of groups (in beginning just pairs)
             //then, regroup them by joining pairs if they have common fragment
             //after that look through list of new groups and regroup again
             //do that until there is list of groups with no common elements
             //after that grouping we can expand fragments in groups
-            var secondList = new List<List<Fragment>> { firstList[0] };
+            var secondList = new List<List<Fragment>> { firstList[0] };     //new list will always contain better grouped clones, then previous one
 
             for (var i = 1; i < firstList.Count; i++)
             {
@@ -414,7 +482,7 @@ namespace FuzzyMatching
 
                 for (var j = 0; j < firstList[i].Count; j++)
                 {
-                    var index = secondList.FindIndex(x => x.Exists(y => y.Position == firstList[i][j].Position));
+                    var index = secondList.FindIndex(x => x.Exists(y => y.Position == firstList[i][j].Position)); //found same fragment in other group
 
                     if (index < 0) continue;
                     newList = false;
@@ -422,7 +490,7 @@ namespace FuzzyMatching
                     {
                         if (!secondList[index].Exists(x => x.Position == fragment.Position))
                         {
-                            secondList[index].Add(fragment);
+                            secondList[index].Add(fragment); //add fragments to group if they are not there already
                         }
                     });
                     break;
@@ -430,7 +498,7 @@ namespace FuzzyMatching
 
                 if (newList)
                 {
-                    secondList.Add(firstList[i]);
+                    secondList.Add(firstList[i]); //add a group to list if it had no same fragments with other ones
                 }
             }
 
@@ -439,6 +507,11 @@ namespace FuzzyMatching
 
         private List<List<Fragment>> ExpandLeft(List<List<Fragment>> groupOfClones, Fragment[] allFragments)
         {
+            if (groupOfClones == null || allFragments == null)
+            {
+                throw new Exception("Null parameters for expanding to left");
+            }
+
             var expandLeft = true;
             //comparing neighbour fragments from the left
             while (expandLeft && groupOfClones.TrueForAll(x => x.First().Position - 1 >= 0))
@@ -446,6 +519,7 @@ namespace FuzzyMatching
                 //code below checks if we can expand to the left, because if some elements of the group cannot, expanding to left stops
                 for (var i = 0; i < groupOfClones.Count - 1; i++)
                 {
+                    //if neighbour fragments from the left are similar for different clones in one group
                     if (CompareFragments(allFragments.First(x => x.Position == groupOfClones[i].First().Position - 1),
                         allFragments.First(x => x.Position == groupOfClones[i + 1].First().Position - 1))) continue;
                     expandLeft = false;
@@ -455,7 +529,7 @@ namespace FuzzyMatching
                 if (!expandLeft) continue;
                 foreach (var t in groupOfClones)
                 {
-                    t.Insert(0, new Fragment(t.First().Position - _fragmentSize));
+                    t.Insert(0, new Fragment(t.First().Position - _fragmentSize)); //add fragments from the left to beginning of clones 
                 }
             }
 
@@ -464,6 +538,11 @@ namespace FuzzyMatching
 
         private List<List<Fragment>> ExpandRight(List<List<Fragment>> groupOfClones, Fragment[] allFragments)
         {
+            if (groupOfClones == null || allFragments == null)
+            {
+                throw new Exception("Null parameters for expanding to right");
+            }
+
             var expandRight = true;
             var lastFragmentPosition = allFragments[allFragments.Length - 1].Position;
 
@@ -473,6 +552,7 @@ namespace FuzzyMatching
                 //code below checks if we can expand to the right, because if some elements of the group cannot, expanding to right stops
                 for (var i = 0; i < groupOfClones.Count - 1; i++)
                 {
+                    //if neighbour fragments from the right are similar for different clones in one group
                     if (CompareFragments(allFragments.First(x => x.Position == groupOfClones[i].Last().Position + 1),
                         allFragments.First(x => x.Position == groupOfClones[i + 1].Last().Position + 1))) continue;
                     expandRight = false;
@@ -482,7 +562,7 @@ namespace FuzzyMatching
                 if (!expandRight) continue;
                 foreach (var t in groupOfClones)
                 {
-                    t.Add(new Fragment(t.Last().Position + 1));
+                    t.Add(new Fragment(t.Last().Position + 1));     //add fragments from the right to the end of clones 
                 }
             }
 
@@ -492,13 +572,19 @@ namespace FuzzyMatching
         private List<List<List<Fragment>>> DeleteIntersectionsOfGroup(List<List<List<Fragment>>> result, int currentListId,
             List<List<List<Fragment>>> groupedFragments, ref List<int> excludedFromSearch)
         {
-            if (excludedFromSearch.Contains(currentListId)) return result;
+            if (currentListId < 0 || groupedFragments == null)
+            {
+                throw new Exception("Incorrect parameters for deleting intersection for concrete group");
+            }
+
+            if (excludedFromSearch.Contains(currentListId)) return result;     //groups can be excluded because of intesections
 
             var currentList = groupedFragments[currentListId];
             var foundIntersection = false;
 
             for (var j = currentListId + 1; j < groupedFragments.Count; j++)
             {
+                //for two groups method would find intersections between them
                 FindIntersectionsBetweenGroups(result, currentListId, j, groupedFragments, ref foundIntersection, ref excludedFromSearch);
 
                 if (foundIntersection)
@@ -520,6 +606,11 @@ namespace FuzzyMatching
         private void FindIntersectionsBetweenGroups(List<List<List<Fragment>>> result, int currentListId, int secondListId,
             List<List<List<Fragment>>> groupedFragments, ref bool foundIntersection, ref List<int> excludedFromSearch)
         {
+            if (currentListId < 0 || secondListId < 0 || groupedFragments == null)
+            {
+                throw new Exception("Incorrect parameters for finding intersections between groups");
+            }
+
             if (excludedFromSearch.Contains(secondListId)) return;
             var currentList = groupedFragments[currentListId];
             var comparedList = groupedFragments[secondListId]; //another group of clones
@@ -547,12 +638,12 @@ namespace FuzzyMatching
             }
         }
 
-        private void RestoreXml()
-        {
-            if (_document == null) return;
+        //private void RestoreXml()
+        //{
+        //    if (_document == null) return;
 
-            _document.Save(_documentName);
-        }
+        //    _document.Save(_documentName);
+        //}
 
         //private void SaveStringToFile(string textToSave)
         //{

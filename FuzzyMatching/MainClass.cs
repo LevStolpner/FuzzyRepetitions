@@ -4,9 +4,8 @@
     {
         static void Main()
         {
-            var converter = new CloneFinder("LinuxKernel.xml", 20, 10, 2); //here we pass all settings for our algorithm:
-            converter.Run();                                               //first - size of fragment, second - max edit distance between them,
-                                                                           //third - difference between hashes of fragments to compare
+            var converter = new CloneFinder("LinuxKernel.xml", 20, 10, 2); //settings: size of fragment, max edit distance, difference between hashes
+            converter.Run(true);                                           //parameter - true if using multithreading, if false - one thread
         }
     }
 }
