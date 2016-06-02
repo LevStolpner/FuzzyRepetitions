@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -12,8 +13,7 @@ namespace FuzzyMatching
     public class CloneFinder
     {
         private const int HashLength = 9;
-        private readonly string _documentName;
-        private XmlDocument _document;
+        private readonly string _documentPath;
 
         private readonly int _fragmentSize;
         private readonly int _numberOfDifferences;           //parameter for maximal edit distance between fragments
@@ -21,11 +21,11 @@ namespace FuzzyMatching
 
         private readonly int[][] _d;                         //table, which will be used for fast calculating edit distance algorithm
 
-        public CloneFinder(string documentName, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference)
+        public CloneFinder(string documentPath, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference)
         {
-            if (String.IsNullOrEmpty(documentName))
+            if (String.IsNullOrEmpty(documentPath))
             {
-                throw new ArgumentNullException("documentName");
+                throw new ArgumentNullException("documentPath");
             }
             if (sizeOfFragment <= 0 || numberOfDifferences <= 0 || hashFragmentDifference <= 0 ||
                 sizeOfFragment <= numberOfDifferences || hashFragmentDifference >= HashLength)
@@ -33,7 +33,7 @@ namespace FuzzyMatching
                 throw new Exception("Incorrect arguments");
             }
 
-            _documentName = documentName;
+            _documentPath = documentPath;
             _fragmentSize = sizeOfFragment;
             _numberOfDifferences = numberOfDifferences;
             _hashFragmentDifference = hashFragmentDifference;
@@ -69,68 +69,61 @@ namespace FuzzyMatching
 
         public void Run(bool isMultithreaded)
         {
-            if (TryLoadXmlDocument())
+            var text = ConvertXmlToText(_documentPath, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+            var fragments = Preprocess(text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments
+            List<List<Fragment>> clones;
+
+            var a = DateTime.Now;
+            if (isMultithreaded)                   //if true, two threads will be used to compare fragments, else - one thread
             {
-                var text = ConvertXmlToText(_documentName, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
-                var fragments = Preprocess(text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments
-                List<List<Fragment>> clones;
-
-                var a = DateTime.Now;
-                if (isMultithreaded)                   //if true, two threads will be used to compare fragments, else - one thread
-                {
-                    //these two tasks compare clones from separate parts of fragmented text
-                    var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
-                    var secondTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), fragments.Length / 3 + 1, fragments.Length));
-                    Task.WaitAll(firstTask, secondTask);
-                    clones = firstTask.Result;
-                    clones.AddRange(secondTask.Result);
-                }
-                else
-                {
-                    clones = FindClones(fragments.ToList(), 0, fragments.Length);
-                }
-                Console.WriteLine(DateTime.Now - a);
-                //clone pairs are being gathered into groups of similar fragments, after that each of grouped clones gets expanded
-                var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
-                //expanded clones may have intersections between clones from different groups, so some of them are redundant
-                var newGroupedClones = DeleteIntersections(expandedClones);
-
-                var numberOfGroups = newGroupedClones.Count;
-                var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
-                var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
-                Console.WriteLine("Statistics: ");
-                Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
-                Console.ReadLine();
+                //these two tasks compare clones from separate parts of fragmented text
+                var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
+                var secondTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), fragments.Length / 3 + 1, fragments.Length));
+                Task.WaitAll(firstTask, secondTask);
+                clones = firstTask.Result;
+                clones.AddRange(secondTask.Result);
             }
             else
             {
-                throw new Exception("Could not read XML document");
+                clones = FindClones(fragments.ToList(), 0, fragments.Length);
             }
+            Console.WriteLine(DateTime.Now - a);
+            //clone pairs are being gathered into groups of similar fragments, after that each of grouped clones gets expanded
+            var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
+            //expanded clones may have intersections between clones from different groups, so some of them are redundant
+            var newGroupedClones = DeleteIntersections(expandedClones);
+
+            var numberOfGroups = newGroupedClones.Count;
+            var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
+            var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
+            Console.WriteLine("Statistics: ");
+            Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
+            Console.ReadLine();
         }
 
-        private bool TryLoadXmlDocument()
-        {
-            try
-            {
-                _document = new XmlDocument();
-                _document.Load(_documentName);
-                return true;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-                return false;
-            }
-        }
+        //private bool TryLoadXmlDocument()
+        //{
+        //    try
+        //    {
+        //        _document = new XmlDocument();
+        //        _document.Load(_documentPath);
+        //        return true;
+        //    }
+        //    catch (Exception e)
+        //    {
+        //        Console.WriteLine(e.Message);
+        //        return false;
+        //    }
+        //}
 
-        private string ConvertXmlToText(string documentName, XmlReaderSettings settings)
+        private string ConvertXmlToText(string documentPath, XmlReaderSettings settings)
         {
-            if (_document == null || String.IsNullOrEmpty(documentName) || settings == null)
+            if (String.IsNullOrEmpty(documentPath) || settings == null)
             {
                 throw new Exception("Incorrect parameters for converting XML-document");
             }
 
-            return ReadDocument(documentName, settings);
+            return ReadDocument(documentPath, settings);
         }
 
         private Fragment[] Preprocess(string text)
@@ -278,24 +271,30 @@ namespace FuzzyMatching
 
         #region Auxiliary methods
 
-        private string ReadDocument(string documentName, XmlReaderSettings settings)
+        private string ReadDocument(string documentPath, XmlReaderSettings settings)
         {
-            if (String.IsNullOrEmpty(documentName) || settings == null)
+            if (String.IsNullOrEmpty(documentPath) || settings == null)
             {
                 throw new Exception("Null parameters while reading XML-document");
             }
 
             var sb = new StringBuilder();
 
-            using (var reader = XmlReader.Create(documentName, settings))
+            using (var reader = XmlReader.Create(documentPath, settings))  //here would work absolute or relative path
             {
+                var xmlInfo = (IXmlLineInfo)reader;                        //adding a possibility to save positions of words
+
                 while (reader.Read())
                 {
                     if (reader.NodeType != XmlNodeType.Text) continue;
                     sb.Append(reader.Value);
                     sb.Append(' ');
+                    
+                    var line = xmlInfo.LineNumber;
+                    var position = xmlInfo.LinePosition;
                 }
             }
+
             //replacing some symbols in text to decrease its size
             var replacingValues = new Dictionary<string, string> { { "\n", " " }, { "\t", " " }, { "   ", " " }, { "  ", " " } };
 
@@ -642,23 +641,23 @@ namespace FuzzyMatching
         //{
         //    if (_document == null) return;
 
-        //    _document.Save(_documentName);
+        //    _document.Save(_documentPath);
         //}
 
-        //private void SaveStringToFile(string textToSave)
-        //{
-        //    try
-        //    {
-        //        using (var streamWriter = new StreamWriter(_documentName))
-        //        {
-        //            streamWriter.Write(textToSave);
-        //        }
-        //    }
-        //    catch (Exception e)
-        //    {
-        //        throw new Exception(e.Message);
-        //    }
-        //}
+        private void SaveStringToFile(string textToSave)
+        {
+            try
+            {
+                using (var streamWriter = new StreamWriter(_documentPath))
+                {
+                    streamWriter.Write(textToSave);
+                }
+            }
+            catch (Exception e)
+            {
+                throw new Exception(e.Message);
+            }
+        }
         #endregion
     }
 }

@@ -4,8 +4,11 @@
     {
         static void Main()
         {
-            var converter = new CloneFinder("LinuxKernel.xml", 20, 10, 2); //settings: size of fragment, max edit distance, difference between hashes
-            converter.Run(true);                                           //parameter - true if using multithreading, if false - one thread
+            //settings: size of fragment, max edit distance, difference between hashes
+            //var converter = new CloneFinder(@"C:\Users\Leva\Documents\Visual Studio 2013\Projects\FuzzyRepetitions\FuzzyMatching\LinuxKernel.xml", 20, 10, 2);
+            var converter = new CloneFinder("LinuxKernel.xml", 20, 10, 2);
+            //parameter - true if using multithreading, if false - one thread
+            converter.Run(true);
         }
     }
 }
