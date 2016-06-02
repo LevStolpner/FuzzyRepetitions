@@ -92,7 +92,7 @@ namespace FuzzyMatching
             var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
             //expanded clones may have intersections between clones from different groups, so some of them are redundant
             var newGroupedClones = DeleteIntersections(expandedClones);
-
+            //TODO: if there are same words from left or right fragments, there should be a method joining them to clones
             var numberOfGroups = newGroupedClones.Count;
             var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
             var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
@@ -283,14 +283,14 @@ namespace FuzzyMatching
             using (var reader = XmlReader.Create(documentPath, settings))  //here would work absolute or relative path
             {
                 var xmlInfo = (IXmlLineInfo)reader;                        //adding a possibility to save positions of words
-
+                //TODO: save coordinates of nodes (words?) and store them in fragments (begin and end?)
                 while (reader.Read())
                 {
                     if (reader.NodeType != XmlNodeType.Text) continue;
                     sb.Append(reader.Value);
                     sb.Append(' ');
                     
-                    var line = xmlInfo.LineNumber;
+                    var line = xmlInfo.LineNumber;            
                     var position = xmlInfo.LinePosition;
                 }
             }
@@ -306,7 +306,7 @@ namespace FuzzyMatching
             return sb.ToString();
         }
 
-        private string NormalizeAndCreateAlphabet(List<string> words, LemmatizerPrebuiltCompact lemmatizer, EnglishStemmer stemmer, ref List<string> alphabet)
+        private string NormalizeAndCreateAlphabet(List<string> words, ILemmatizer lemmatizer, IStemmer stemmer, ref List<string> alphabet)
         {
             if (words == null || lemmatizer == null || stemmer == null)
             {
@@ -644,20 +644,20 @@ namespace FuzzyMatching
         //    _document.Save(_documentPath);
         //}
 
-        private void SaveStringToFile(string textToSave)
-        {
-            try
-            {
-                using (var streamWriter = new StreamWriter(_documentPath))
-                {
-                    streamWriter.Write(textToSave);
-                }
-            }
-            catch (Exception e)
-            {
-                throw new Exception(e.Message);
-            }
-        }
+        //private void SaveStringToFile(string textToSave)
+        //{
+        //    try
+        //    {
+        //        using (var streamWriter = new StreamWriter(_documentPath))
+        //        {
+        //            streamWriter.Write(textToSave);
+        //        }
+        //    }
+        //    catch (Exception e)
+        //    {
+        //        throw new Exception(e.Message);
+        //    }
+        //}
         #endregion
     }
 }

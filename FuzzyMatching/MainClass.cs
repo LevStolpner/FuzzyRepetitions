@@ -9,6 +9,7 @@
             var converter = new CloneFinder("LinuxKernel.xml", 20, 10, 2);
             //parameter - true if using multithreading, if false - one thread
             converter.Run(true);
+            //TODO: create command line interface for using algorithm
         }
     }
 }
