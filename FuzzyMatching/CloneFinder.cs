@@ -18,10 +18,11 @@ namespace FuzzyMatching
         private readonly int _fragmentSize;
         private readonly int _numberOfDifferences;           //parameter for maximal edit distance between fragments
         private readonly int _hashFragmentDifference;        //parameter for hash value difference between fragments
+        private readonly bool _isMultithreaded;
 
         private readonly int[][] _d;                         //table, which will be used for fast calculating edit distance algorithm
 
-        public CloneFinder(string documentPath, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference)
+        public CloneFinder(string documentPath, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference, bool isMultithreaded)
         {
             if (String.IsNullOrEmpty(documentPath))
             {
@@ -37,6 +38,7 @@ namespace FuzzyMatching
             _fragmentSize = sizeOfFragment;
             _numberOfDifferences = numberOfDifferences;
             _hashFragmentDifference = hashFragmentDifference;
+            _isMultithreaded = isMultithreaded;  //TODO: parameter for more control of the threading process (number of threads?)
             _d = new int[_fragmentSize][];
 
             for (var i = 0; i < _fragmentSize; i++)
@@ -67,14 +69,14 @@ namespace FuzzyMatching
             }
         }
 
-        public void Run(bool isMultithreaded)
+        public void Run()
         {
             var text = ConvertXmlToText(_documentPath, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
             var fragments = Preprocess(text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments
             List<List<Fragment>> clones;
 
             var a = DateTime.Now;
-            if (isMultithreaded)                   //if true, two threads will be used to compare fragments, else - one thread
+            if (_isMultithreaded)                   //if true, two threads will be used to compare fragments, else - one thread
             {
                 //these two tasks compare clones from separate parts of fragmented text
                 var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
@@ -136,11 +138,11 @@ namespace FuzzyMatching
             var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
             var stemmer = new EnglishStemmer();
             var delimeters = new[] { ' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'', '/', '\\', '-', '+', '=', '*', '<', '>' };
-            var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries);     //text is splitted by delimeters
+            var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries).ToList();     //text is splitted by delimeters
             var alphabet = new List<string>();
             //this part can be parallelized by splitting words in different lists
-            var preprocessedText = NormalizeAndCreateAlphabet(words.ToList(), lemmatizer, stemmer, ref alphabet);
-            var textInNumbers = ConvertTextWithNewAlphabet(words, alphabet);    //instead of words in text there will be numbers (of word in alphabet)
+            var preprocessedText = NormalizeAndCreateAlphabet(ref words, lemmatizer, stemmer, ref alphabet);
+            var textInNumbers = ConvertTextWithNewAlphabet(words.ToArray(), alphabet);    //instead of words in text there will be numbers (of word in alphabet)
 
             return Split(preprocessedText, textInNumbers);
         }
@@ -306,7 +308,7 @@ namespace FuzzyMatching
             return sb.ToString();
         }
 
-        private string NormalizeAndCreateAlphabet(List<string> words, ILemmatizer lemmatizer, IStemmer stemmer, ref List<string> alphabet)
+        private string NormalizeAndCreateAlphabet(ref List<string> words, ILemmatizer lemmatizer, IStemmer stemmer, ref List<string> alphabet)
         {
             if (words == null || lemmatizer == null || stemmer == null)
             {
