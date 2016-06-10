@@ -17,18 +17,19 @@ namespace FuzzyMatching
         private readonly int _fragmentSize;
         private readonly int _numberOfDifferences;           //parameter for maximal edit distance between fragments
         private readonly int _hashFragmentDifference;        //parameter for hash value difference between fragments
-        private readonly bool _isMultithreaded;
+        private readonly int _numberOfThreads;
 
         private readonly int[][] _d;                         //table, which will be used for fast calculating edit distance algorithm
 
-        public CloneFinder(string documentPath, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference, bool isMultithreaded)
+        public CloneFinder(string documentPath, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference, int numberOfThreads)
         {
             if (String.IsNullOrEmpty(documentPath))
             {
                 throw new ArgumentNullException("documentPath");
             }
             if (sizeOfFragment <= 0 || numberOfDifferences <= 0 || hashFragmentDifference <= 0 ||
-                sizeOfFragment <= numberOfDifferences || hashFragmentDifference >= HashLength)
+                sizeOfFragment <= numberOfDifferences || hashFragmentDifference >= HashLength ||
+                numberOfThreads < 1 || numberOfThreads > 3)
             {
                 throw new Exception("Incorrect arguments");
             }
@@ -37,7 +38,7 @@ namespace FuzzyMatching
             _fragmentSize = sizeOfFragment;
             _numberOfDifferences = numberOfDifferences;
             _hashFragmentDifference = hashFragmentDifference;
-            _isMultithreaded = isMultithreaded;  //TODO: parameter for more control of the threading process (number of threads?)
+            _numberOfThreads = numberOfThreads;
             _d = new int[_fragmentSize][];
 
             for (var i = 0; i < _fragmentSize; i++)
@@ -75,20 +76,37 @@ namespace FuzzyMatching
             List<List<Fragment>> clones;
 
             var a = DateTime.Now;
-            if (_isMultithreaded)                   //if true, two threads will be used to compare fragments, else - one thread
+            switch (_numberOfThreads)
             {
-                //these two tasks compare clones from separate parts of fragmented text
-                var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
-                var secondTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), fragments.Length / 3 + 1, fragments.Length));
-                Task.WaitAll(firstTask, secondTask);
-                clones = firstTask.Result;
-                clones.AddRange(secondTask.Result);
-            }
-            else
-            {
-                clones = FindClones(fragments.ToList(), 0, fragments.Length);
+                //here only one thread will be used to compare fragments
+                case 1:
+                    clones = FindClones(fragments.ToList(), 0, fragments.Length);
+                    break;
+                //two threads will be used to compare fragments from separate parts of text
+                case 2:
+                    {
+                        var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 3));
+                        var secondTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), fragments.Length / 3 + 1, fragments.Length));
+                        Task.WaitAll(firstTask, secondTask);
+                        clones = firstTask.Result;
+                        clones.AddRange(secondTask.Result);
+                        break;
+                    }
+                //three threads will be used to compare fragments from separate parts of text
+                default:
+                    {
+                        var firstTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), 0, fragments.Length / 4));
+                        var secondTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), fragments.Length / 4 + 1, fragments.Length / 2));
+                        var thirdTask = Task.Factory.StartNew(() => FindClones(fragments.ToList(), fragments.Length / 2 + 1, fragments.Length));
+                        Task.WaitAll(firstTask, secondTask, thirdTask);
+                        clones = firstTask.Result;
+                        clones.AddRange(secondTask.Result);
+                        clones.AddRange(thirdTask.Result);
+                        break;
+                    }
             }
             Console.WriteLine(DateTime.Now - a);
+
             //clone pairs are being gathered into groups of similar fragments, after that each of grouped clones gets expanded
             var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
             //expanded clones may have intersections between clones from different groups, so some of them are redundant
@@ -274,8 +292,8 @@ namespace FuzzyMatching
                     if (reader.NodeType != XmlNodeType.Text) continue;
                     sb.Append(reader.Value);
                     sb.Append(' ');
-                    
-                    var line = xmlInfo.LineNumber;            
+
+                    var line = xmlInfo.LineNumber;
                     var position = xmlInfo.LinePosition;
                 }
             }
