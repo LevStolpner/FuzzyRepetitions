@@ -7,7 +7,7 @@ using System.Xml;
 using LemmaSharp;
 using Iveonik.Stemmers;
 
-namespace FuzzyMatching
+namespace CloneFinder
 {
     public class CloneFinder
     {

@@ -7,8 +7,8 @@
     <ProjectGuid>{BA14EB88-8F08-4783-93C3-E8DEB0864AF5}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>FuzzyMatching</RootNamespace>
-    <AssemblyName>FuzzyMatching</AssemblyName>
+    <RootNamespace>CloneFinder</RootNamespace>
+    <AssemblyName>CloneFinder</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
@@ -48,7 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CloneFinder.cs" />
-    <Compile Include="MainClass.cs" />
+    <Compile Include="Runner.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
