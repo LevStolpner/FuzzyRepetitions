@@ -111,6 +111,9 @@ namespace CloneFinder
             var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
             //expanded clones may have intersections between clones from different groups, so some of them are redundant
             var newGroupedClones = DeleteIntersections(expandedClones);
+            while (Undistributed(newGroupedClones))
+                newGroupedClones = DeleteIntersections(newGroupedClones);
+
             //TODO: if there are same words from left or right fragments, there should be a method joining them to clones
             var numberOfGroups = newGroupedClones.Count;
             var averageSizeOfGroup = newGroupedClones.Sum(t => t.Count) / newGroupedClones.Count;
@@ -463,6 +466,28 @@ namespace CloneFinder
             return false;
         }
 
+        private bool Undistributed(List<List<List<Fragment>>> listOfGroups)
+        {
+            if (listOfGroups == null)
+            {
+                throw new ArgumentNullException("listOfGroups");
+            }
+
+            //this function checks list of groups of clones, if different groups have same fragment
+            for (var i = 0; i < listOfGroups.Count; i++)
+            {
+                for (var j = i + 1; j < listOfGroups.Count; j++)
+                {
+                    if (listOfGroups[i].Exists(x => listOfGroups[j].Exists(y => x.Exists(z => y.Exists(h => z.Position == h.Position)))))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         private List<List<Fragment>> RegroupClones(List<List<Fragment>> firstList)
         {
             if (firstList == null)
@@ -635,8 +660,7 @@ namespace CloneFinder
                 var list = currentListValue >= comparedListValue ? currentList : comparedList;
                 result.Add(list);
                 excludedFromSearch.Add(currentListId); //exclude fragments from search, which had conflicted already
-                excludedFromSearch.Add(secondListId); //maybde TODO: not include in this lists groups in case there are 3 or more groups with same fragments
-                //TODO: exclude only groups, lost in competition :) others should go on
+                excludedFromSearch.Add(secondListId);
             }
         }
         #endregion
