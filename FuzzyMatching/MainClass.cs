@@ -4,12 +4,29 @@ namespace FuzzyMatching
 {
     public class MainClass
     {
-        static void Main()          //TODO: create command line interface for using algorithm
+        static void Main(string[] args)
         {
-            //settings: size of fragment, max edit distance, difference between hashes, using multithreading if true, if false - one thread
-            //var converter = new CloneFinder(@"C:\Users\Leva\Documents\Visual Studio 2013\Projects\FuzzyRepetitions\FuzzyMatching\LinuxKernel.xml", 20, 10, 2);
-            var converter = new CloneFinder("LinuxKernel.xml", 20, 10, 2, true);
-            converter.Run();
+            //arguments: path to xml file, size of fragment, max edit distance, difference between hashes,
+            //using multithreading if true, if false - one thread
+            int fragmentSize, editDist, hashDist;
+            var multithreaded = false;
+
+            if (args != null && args.Length >= 4 && int.TryParse(args[1], out fragmentSize) &&
+                int.TryParse(args[2], out editDist) && int.TryParse(args[3], out hashDist))
+            {
+                var filePath = args[0]; 
+                if (args.Length == 5 && args[4] == "m")
+                {
+                    multithreaded = true;
+                }
+
+                var converter = new CloneFinder(filePath, fragmentSize, editDist, hashDist, multithreaded);
+                converter.Run();
+            }
+            else
+            {
+                Console.WriteLine("Incorrect input parameters.");
+            }
         }
     }
 }

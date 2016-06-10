@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -100,23 +99,7 @@ namespace FuzzyMatching
             var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
             Console.WriteLine("Statistics: ");
             Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
-            Console.ReadLine();
         }
-
-        //private bool TryLoadXmlDocument()
-        //{
-        //    try
-        //    {
-        //        _document = new XmlDocument();
-        //        _document.Load(_documentPath);
-        //        return true;
-        //    }
-        //    catch (Exception e)
-        //    {
-        //        Console.WriteLine(e.Message);
-        //        return false;
-        //    }
-        //}
 
         private string ConvertXmlToText(string documentPath, XmlReaderSettings settings)
         {
@@ -638,28 +621,6 @@ namespace FuzzyMatching
                 //TODO: exclude only groups, lost in competition :) others should go on
             }
         }
-
-        //private void RestoreXml()
-        //{
-        //    if (_document == null) return;
-
-        //    _document.Save(_documentPath);
-        //}
-
-        //private void SaveStringToFile(string textToSave)
-        //{
-        //    try
-        //    {
-        //        using (var streamWriter = new StreamWriter(_documentPath))
-        //        {
-        //            streamWriter.Write(textToSave);
-        //        }
-        //    }
-        //    catch (Exception e)
-        //    {
-        //        throw new Exception(e.Message);
-        //    }
-        //}
         #endregion
     }
 }
