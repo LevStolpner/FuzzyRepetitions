@@ -56,11 +56,6 @@ namespace CloneFinder
             public readonly int Position;
             public readonly int[] Words;
             public readonly int HashValue;
-            public Fragment(int position)
-            {
-                Position = position;
-                HashValue = 0;
-            }
             public Fragment(int position, int[] words, int hash)
             {
                 Position = position;
