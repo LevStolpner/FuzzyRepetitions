@@ -61,9 +61,15 @@ namespace CloneFinder
             {
                 get
                 {
-                    return string.Join(" ", Reprs);
+                    return Reprs != null ? string.Join(" ", Reprs) : null;
                 }
             }
+
+            public override string ToString()
+            {
+                return Repr;
+            }
+
             public Fragment(int position)
             {
                 Position = position;
