@@ -357,27 +357,6 @@ namespace CloneFinder
             return preprocessedText.ToString();
         }
 
-        protected struct AlphabetWord
-        {
-            public readonly int AlphabetIndex;
-            public readonly int Offset;
-            private readonly string wVal;
-            public string Repr
-            {
-                get
-                {
-                    return wVal;
-                }
-            }
-
-            public AlphabetWord(int AlphabetIndex, string Repr)
-            {
-                this.AlphabetIndex = AlphabetIndex;
-                this.Offset = -1;
-                this.wVal = Repr;
-            }
-        }
-
         private int[] ConvertTextWithNewAlphabet(string[] words, List<string> alphabet)
         {
             if (words == null || alphabet == null)
