@@ -70,15 +70,15 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharpPrebuilt\LemmaSharpPrebuilt.csproj">
+    <ProjectReference Include="..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharpPrebuilt\LemmaSharpPrebuilt.csproj">
       <Project>{1e700d21-62d3-4525-93fe-c1fb0a1b0564}</Project>
       <Name>LemmaSharpPrebuilt</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharpPrebuilt\LemmaSharpPrebuiltCompact.csproj">
+    <ProjectReference Include="..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharpPrebuilt\LemmaSharpPrebuiltCompact.csproj">
       <Project>{9ba3f2c4-5dab-4d7b-b431-b072a0d8fc6a}</Project>
       <Name>LemmaSharpPrebuiltCompact</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharp\LemmaSharp.csproj">
+    <ProjectReference Include="..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharp\LemmaSharp.csproj">
       <Project>{a39293c1-92d8-47b9-93a4-41f443b4f9e4}</Project>
       <Name>LemmaSharp</Name>
     </ProjectReference>
