@@ -551,7 +551,7 @@ namespace CloneFinder
                 if (!expandLeft) continue;
                 foreach (var t in groupOfClones)
                 {
-                    t.Insert(0, Array.Find(allFragments, fragment => fragment.Position == t.First().Position - 1));
+                    t.Insert(0, allFragments[t.First().Position - 1]);
                     //add fragments from the left to beginning of clones 
                 }
             }
@@ -585,7 +585,7 @@ namespace CloneFinder
                 if (!expandRight) continue;
                 foreach (var t in groupOfClones)
                 {
-                    t.Add(Array.Find(allFragments, fragment => fragment.Position == t.Last().Position + 1));
+                    t.Add(allFragments[t.Last().Position + 1]);
                     //add fragments from the right to the end of clones 
                 }
             }
