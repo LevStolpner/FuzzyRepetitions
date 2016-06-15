@@ -105,9 +105,11 @@ namespace CloneFinder
             //clone pairs are being gathered into groups of similar fragments, after that each of grouped clones gets expanded
             var expandedClones = Group(clones).Select(x => Expand(x, fragments)).ToList();
             //expanded clones may have intersections between clones from different groups, so some of them are redundant
+            a = DateTime.Now;
             var newGroupedClones = DeleteIntersections(expandedClones);
-            while (Undistributed(newGroupedClones))
+            while (HasIntersections(newGroupedClones))
                 newGroupedClones = DeleteIntersections(newGroupedClones);
+            Console.WriteLine(DateTime.Now - a);
 
             //TODO: if there are same words from left or right fragments, there should be a method joining them to clones
             var numberOfGroups = newGroupedClones.Count;
@@ -140,7 +142,7 @@ namespace CloneFinder
             var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries).ToList();     //text is splitted by delimeters
             var alphabet = new List<string>();
             //this part can be parallelized by splitting words in different lists
-            var preprocessedText = NormalizeAndCreateAlphabet(ref words, lemmatizer, stemmer, ref alphabet);
+            var preprocessedText = NormalizeAndCreateAlphabet(words, lemmatizer, stemmer, alphabet);
             var textInNumbers = ConvertTextWithNewAlphabet(words.ToArray(), alphabet);    //instead of words in text there will be numbers (of word in alphabet)
 
             return Split(preprocessedText, textInNumbers);
@@ -264,7 +266,7 @@ namespace CloneFinder
             for (var i = 0; i < groupedFragments.Count; i++)
             {
                 //method will find and delete intersections with i-th group in list
-                result = DeleteIntersectionsOfGroup(result, i, groupedFragments, ref excludedFromSearch);
+                result = DeleteIntersectionsOfGroup(result, i, groupedFragments, excludedFromSearch);
             }
 
             return result;
@@ -307,7 +309,7 @@ namespace CloneFinder
             return sb.ToString();
         }
 
-        private string NormalizeAndCreateAlphabet(ref List<string> words, ILemmatizer lemmatizer, IStemmer stemmer, ref List<string> alphabet)
+        private string NormalizeAndCreateAlphabet(List<string> words, ILemmatizer lemmatizer, IStemmer stemmer, List<string> alphabet)
         {
             if (words == null || lemmatizer == null || stemmer == null)
             {
@@ -461,7 +463,7 @@ namespace CloneFinder
             return false;
         }
 
-        private bool Undistributed(List<List<List<Fragment>>> listOfGroups)
+        private bool HasIntersections(List<List<List<Fragment>>> listOfGroups)
         {
             if (listOfGroups == null)
             {
@@ -594,13 +596,8 @@ namespace CloneFinder
         }
 
         private List<List<List<Fragment>>> DeleteIntersectionsOfGroup(List<List<List<Fragment>>> result, int currentListId,
-            List<List<List<Fragment>>> groupedFragments, ref List<int> excludedFromSearch)
+            List<List<List<Fragment>>> groupedFragments, List<int> excludedFromSearch)
         {
-            if (currentListId < 0 || groupedFragments == null)
-            {
-                throw new Exception("Incorrect parameters for deleting intersection for concrete group");
-            }
-
             if (excludedFromSearch.Contains(currentListId)) return result;     //groups can be excluded because of intesections
 
             var currentList = groupedFragments[currentListId];
@@ -609,56 +606,48 @@ namespace CloneFinder
             for (var j = currentListId + 1; j < groupedFragments.Count; j++)
             {
                 //for two groups method would find intersections between them
-                FindIntersectionsBetweenGroups(result, currentListId, j, groupedFragments, ref foundIntersection, ref excludedFromSearch);
+                FindIntersectionsBetweenGroups(result, currentListId, j, groupedFragments, ref foundIntersection, excludedFromSearch);
 
-                if (foundIntersection)
-                {
-                    break;
-                }
+                if (foundIntersection) break;
             }
 
             if (!foundIntersection)
             {
-                //if there are no intersections for current list, we exclude it from farther search and add to the result
                 result.Add(currentList);
                 excludedFromSearch.Add(currentListId);
             }
+            //if there are no intersections for current list, we exclude it from farther search and add to the result
 
             return result;
         }
 
         private void FindIntersectionsBetweenGroups(List<List<List<Fragment>>> result, int currentListId, int secondListId,
-            List<List<List<Fragment>>> groupedFragments, ref bool foundIntersection, ref List<int> excludedFromSearch)
+            List<List<List<Fragment>>> groupedFragments, ref bool foundIntersection, List<int> excludedFromSearch)
         {
-            if (currentListId < 0 || secondListId < 0 || groupedFragments == null)
-            {
-                throw new Exception("Incorrect parameters for finding intersections between groups");
-            }
-
             if (excludedFromSearch.Contains(secondListId)) return;
             var currentList = groupedFragments[currentListId];
             var comparedList = groupedFragments[secondListId]; //another group of clones
+            List<Fragment> secondCloneWithIntersections = null;
 
             //comparing one group with another to see, does it have same fragments with currentList
 
-            var cloneWithSameFragments =
-                currentList.Find(clone => clone.Exists(fragment => comparedList.Exists(clone2 =>
-                    clone2.Exists(fragment2 => fragment2.Position == fragment.Position))));
+            var firstCloneWithIntersections = currentList.Find(clone => clone.Exists(fragment =>
+                {
+                    secondCloneWithIntersections = comparedList.Find(clone2 =>
+                        clone2.Exists(fragment2 => fragment2.Position == fragment.Position));
+                    return secondCloneWithIntersections != null;
+                }));
 
-            if (cloneWithSameFragments != null)
-            {
-                //now function m*n^2 will show, which of groups should be deleted, where m = size of group, n = size of clone in fragments
-                foundIntersection = true;
-                var currentListValue = currentList.Count * cloneWithSameFragments.Count * cloneWithSameFragments.Count;
-                var secondClone = comparedList.Find(clone2 =>
-                    clone2.Exists(fragment2 => cloneWithSameFragments.Exists(fragment => fragment2.Position == fragment.Position)));
-                var comparedListValue = comparedList.Count * secondClone.Count * secondClone.Count;
+            if (firstCloneWithIntersections == null || secondCloneWithIntersections == null) return;
+            //now function m*n^2 will show, which of groups should be deleted, where m = size of group, n = size of clone in fragments
+            var currentListValue = currentList.Count * firstCloneWithIntersections.Count * firstCloneWithIntersections.Count;
+            var comparedListValue = comparedList.Count * secondCloneWithIntersections.Count * secondCloneWithIntersections.Count;
 
-                var list = currentListValue >= comparedListValue ? currentList : comparedList;
-                result.Add(list);
-                excludedFromSearch.Add(currentListId); //exclude fragments from search, which had conflicted already
-                excludedFromSearch.Add(secondListId);
-            }
+            result.Add(currentListValue >= comparedListValue ? currentList : comparedList);
+            excludedFromSearch.Add(currentListId); //exclude fragments from search, which had conflicted already
+            excludedFromSearch.Add(secondListId);
+
+            foundIntersection = true;
         }
         #endregion
     }
