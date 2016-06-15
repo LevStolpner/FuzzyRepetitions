@@ -473,7 +473,7 @@ namespace CloneFinder
             {
                 for (var j = i + 1; j < listOfGroups.Count; j++)
                 {
-                    if (listOfGroups[i].Exists(x => listOfGroups[j].Exists(y => x.Exists(z => y.Exists(h => z.Position == h.Position)))))
+                    if (listOfGroups[i].Exists(x => x.Exists(y => listOfGroups[j].Exists(z => z.Exists(w => w.Position == y.Position)))))
                     {
                         return true;
                     }
