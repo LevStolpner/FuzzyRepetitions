@@ -14,6 +14,7 @@ namespace CloneFinder
                 int.TryParse(args[2], out editDist) && int.TryParse(args[3], out hashDist) && int.TryParse(args[4], out numberOfThreads))
             {
                 var filePath = args[0];
+                // was LinuxKernel.xml 20 10 2 1
                 var converter = new CloneFinder(filePath, fragmentSize, editDist, hashDist, numberOfThreads);
                 converter.Run();
             }

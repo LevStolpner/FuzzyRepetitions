@@ -51,7 +51,7 @@ namespace CloneFinder
             }
         }
 
-        private class Fragment
+        public class Fragment
         {
             public readonly int Position;
             public readonly int[] Words;
@@ -136,6 +136,8 @@ namespace CloneFinder
             var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
             Console.WriteLine("Statistics: ");
             Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
+
+            Reporter.Report(newGroupedClones, _documentPath + ".report");
         }
 
         private string ConvertXmlToText(string documentPath, XmlReaderSettings settings)
