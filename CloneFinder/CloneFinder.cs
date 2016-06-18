@@ -166,7 +166,7 @@ namespace CloneFinder
                 throw new Exception("Incorrect parameters for comparing clones");
             }
 
-            var cloneStorage = new List<List<Fragment>>();
+            var cloneStorage = new List<List<Fragment>>(); //TODO: maybe using lists here and further in code is not the best choice?
             var length = fragments.Count;
             //this loop will go through all fragments from start position to stop position and compare them to every other fragment in text
             for (var i = searchStartPosition; i < searchStopPosition; i++)
