@@ -57,11 +57,22 @@ namespace CloneFinder
             public readonly int[] Words;
             public readonly int HashValue;
             public readonly string[] Reprs;
+            public readonly int[] Offsets;
+            public int Offset
+            {
+                get
+                {
+                    return Offsets != null ? Offsets[0] : -1; //Min
+                }
+            }
+
             public string Repr
             {
                 get
                 {
-                    return Reprs != null ? string.Join(" ", Reprs) : null;
+                    return "" +
+                        Offset + ": " +
+                        (Reprs != null ? string.Join(" ", Reprs) : null);
                 }
             }
 
@@ -75,13 +86,15 @@ namespace CloneFinder
                 Position = position;
                 HashValue = 0;
                 Reprs = null;
+                Offsets = null;
             }
-            public Fragment(int position, int[] words, int hash, string[] reprs)
+            public Fragment(int position, int[] words, int hash, string[] reprs, int []offsets)
             {
                 Position = position;
                 Words = words;
                 HashValue = hash;
                 Reprs = reprs;
+                Offsets = offsets;
             }
         }
 
@@ -162,23 +175,41 @@ namespace CloneFinder
             var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
             var stemmer = new EnglishStemmer();
             var delimeters = new[] { ' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'', '/', '\\', '-', '+', '=', '*', '<', '>' };
-            var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries).ToList();     //text is splitted by delimeters
+            var prewords = text.Split(delimeters/*, StringSplitOptions.RemoveEmptyEntries*/).ToList();     //text is splitted by delimeters
+            // empty strings between two delimiters, each word adds 1 + its length to offset
+            var preoffsets = new int[prewords.Count];
+            {
+                var coffs = 0;
+                for(var i = 0; i < preoffsets.Length; ++i)
+                {
+                    preoffsets[i] = coffs;
+                    coffs += prewords[i].Length + 1;
+                }
+            }
+
+            var wordsOffsets = Enumerable.
+                Zip(prewords, preoffsets, (w, o) => new Tuple<string, int>(w, o)).
+                Where(wo => !string.IsNullOrEmpty(wo.Item1));
+
+            var words = (from wo in wordsOffsets select wo.Item1).ToList();
+            var offsets = (from wo in wordsOffsets select wo.Item2).ToArray();
             var reprs = words.ToArray(); // copy
+
             //this part can be parallelized by splitting words in different lists
             var preprocessedText = NormalizeAndCreateAlphabet(ref words, lemmatizer, stemmer, ref alphabet);
             var textInNumbers = ConvertTextWithNewAlphabet(words.ToArray(), alphabet);    //instead of words in text there will be numbers (of word in alphabet)
 
-            return Split(preprocessedText, textInNumbers, reprs);
+            return Split(preprocessedText, textInNumbers, reprs, offsets);
         }
 
-        private Fragment[] Split(string text, int[] newText, string[] reprs)
+        private Fragment[] Split(string text, int[] newText, string[] reprs, int[] offsets)
         {
             if (String.IsNullOrEmpty(text) || newText == null || newText.Length == 0)
             {
                 throw new Exception("Incorrect parameters for splitting text to fragments");
             }
             //This method will return an array of Fragments
-            return FragmentText(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries), newText, reprs);
+            return FragmentText(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries), newText, reprs, offsets);
         }
 
         private List<List<Fragment>> FindClones(List<Fragment> fragments, int searchStartPosition, int searchStopPosition)
@@ -378,7 +409,7 @@ namespace CloneFinder
             return numbers;
         }
 
-        private Fragment[] FragmentText(string[] words, int[] newText, string[] reprs)
+        private Fragment[] FragmentText(string[] words, int[] newText, string[] reprs, int[] offsets)
         {
             if (words == null || words.Length == 0 || newText == null || newText.Length == 0)
             {
@@ -394,16 +425,18 @@ namespace CloneFinder
                 var symbols = new char[_fragmentSize];
                 var numbers = new int[_fragmentSize];
                 var wreprs = new string[_fragmentSize];
+                var woffsets = new int[_fragmentSize];
 
                 if (k >= numberOfFragments) break;
                 for (var j = i; j < i + _fragmentSize; j++)
                 {
                     numbers[j - i] = newText[j];                            //numbers would represent words that are in current fragment
                     wreprs[j - i] = reprs[j];
+                    woffsets[j - i] = offsets[j];
                     if (j < wordsLength) symbols[j - i] = words[j][0];      //symbols are first letters of each word in fragment
                 }
 
-                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols), wreprs);    //hash function uses array of first letters
+                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols), wreprs, woffsets);    //hash function uses array of first letters
             }
 
             return arrayOfFragments;
