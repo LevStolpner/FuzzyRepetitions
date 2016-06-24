@@ -26,8 +26,11 @@ namespace CloneFinder
                 foreach (var clo in g)
                 {
                     result.AddLast(String.Format("---- {0,4} / {1,3} ----", counter, ++ccounter));
+
+                    var ymlClone = new List<object>();
+
                     foreach (var clof in clo) {
-                        ymlGroup.Add(new
+                        ymlClone.Add(new
                         {
                             filename = filename,
                             offset = clof.StartOffset,
@@ -35,6 +38,11 @@ namespace CloneFinder
                         });
                         result.AddLast(/*clof.Repr*/clof.GetText(wholeText));
                     }
+
+                    ymlGroup.Add(new
+                    {
+                        fuzzyclone = ymlClone.ToArray()
+                    });
                     gcounter++;
                 }
 
