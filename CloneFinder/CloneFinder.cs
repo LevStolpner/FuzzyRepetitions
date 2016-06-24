@@ -58,11 +58,22 @@ namespace CloneFinder
             public readonly int HashValue;
             public readonly string[] Reprs;
             public readonly int[] Offsets;
-            public int Offset
+            public int StartOffset
             {
                 get
                 {
                     return Offsets != null ? Offsets[0] : -1; //Min
+                }
+            }
+
+            public int LengthInChars
+            {
+                get
+                {
+                    var endOffset =
+                        Offsets[Offsets.Length-1] + // last word offset
+                        Reprs[Offsets.Length-1].Length; // + its length
+                    return endOffset - StartOffset + 1;
                 }
             }
 
@@ -71,9 +82,14 @@ namespace CloneFinder
                 get
                 {
                     return "" +
-                        Offset + ": " +
+                        StartOffset + ", " + LengthInChars + ": " +
                         (Reprs != null ? string.Join(" ", Reprs) : null);
                 }
+            }
+
+            public string GetText(string whole)
+            {
+                return whole.Substring(StartOffset, LengthInChars);
             }
 
             public override string ToString()
@@ -150,7 +166,7 @@ namespace CloneFinder
             Console.WriteLine("Statistics: ");
             Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
 
-            Reporter.Report(newGroupedClones, _documentPath + ".report");
+            Reporter.Report(newGroupedClones, text, _documentPath + ".report");
         }
 
         private string ConvertXmlToText(string documentPath, XmlReaderSettings settings)

@@ -9,7 +9,7 @@ namespace CloneFinder
 {
     class Reporter
     {
-        public static void Report(List<List<List<CloneFinder.Fragment>>> data, string filename)
+        public static void Report(List<List<List<CloneFinder.Fragment>>> data, string wholeText, string filename)
         {
             LinkedList<string> result = new LinkedList<string>();
             int counter = 0;
@@ -22,7 +22,7 @@ namespace CloneFinder
                 {
                     result.AddLast(String.Format("---- {0,4} / {1,3} ----", counter, ++ccounter));
                     foreach(var clof in clo)
-                        result.AddLast(clof.Repr);
+                        result.AddLast(/*clof.Repr*/clof.GetText(wholeText));
                     gcounter++;
                 }
             }
