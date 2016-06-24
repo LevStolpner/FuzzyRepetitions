@@ -166,7 +166,7 @@ namespace CloneFinder
             Console.WriteLine("Statistics: ");
             Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
 
-            Reporter.Report(newGroupedClones, text, _documentPath + ".report");
+            Reporter.Report(newGroupedClones, text, _documentPath);
         }
 
         private string ConvertXmlToText(string documentPath, XmlReaderSettings settings)
