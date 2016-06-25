@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.IO;
+using System.Xml.Linq;
 
 namespace CloneFinder
 {
@@ -14,28 +15,19 @@ namespace CloneFinder
             int counter = 0;
             int gcounter = 0;
 
-            var ymlGroups = new List<object>();
+            var xmlGroups = new XElement("fuzzygroups");
 
             foreach (var g in data)
             {
                 result.AddLast(String.Format("======== {0,4} ========", ++counter));
                 int ccounter = 0;
 
-                var ymlGroup = new List<object>();
+                var xmlGroup = new XElement("fuzzygroup");
 
                 foreach (var clo in g)
                 {
                     result.AddLast(String.Format("---- {0,4} / {1,3} ----", counter, ++ccounter));
-
-                    var ymlClone = new List<object>();
-
                     foreach (var clof in clo) {
-                        ymlClone.Add(new
-                        {
-                            filename = filename,
-                            offset = clof.StartOffset,
-                            length = clof.LengthInChars
-                        });
                         result.AddLast(/*clof.Repr*/clof.GetText(wholeText));
                     }
 
@@ -43,31 +35,32 @@ namespace CloneFinder
                     var cloneLength = clo.Last().StartOffset + clo.Last().LengthInChars - clo.First().StartOffset;
                     var cloneText = wholeText.Substring(cloneOffset, cloneLength);
 
-                    ymlGroup.Add(new
-                    {
-                        fuzzyclone = new {
-                            offset = cloneOffset,
-                            length = cloneLength,
-                            text = cloneText,
-                            fragments = ymlClone.ToArray()
-                        }
-                    });
+                    var xmlClone = new XElement("fuzzyclone",
+                        new XAttribute("filename", filename),
+                        new XAttribute("offset", cloneOffset),
+                        new XAttribute("length", cloneLength),
+                        new XElement("text",
+                            cloneText
+                        ),
+                        new XElement("fragments",
+                            from clof in clo select new XElement("fuzzyfragment",
+                                new XAttribute("offset", clof.StartOffset),
+                                new XAttribute("length", clof.LengthInChars)
+                            )
+                        )
+                    );
+
+                    xmlGroup.Add(xmlClone);
                     gcounter++;
                 }
 
-                ymlGroups.Add(new {
-                    fuzzygroup = ymlGroup.ToArray()
-                });
+                xmlGroup.SetAttributeValue("id", counter - 1);
+                xmlGroups.Add(xmlGroup);
             }
             result.AddLast("Total clones: " + gcounter);
 
             File.WriteAllLines(filename + ".report", result.ToArray(), Encoding.UTF8);
-            using (TextWriter tw = File.CreateText(filename + ".fuzzyclones.yml")) {
-                new YamlDotNet.Serialization.Serializer().Serialize(
-                    tw,
-                    ymlGroups.ToArray()
-                );
-            }
+            xmlGroups.Save(filename + ".fuzzyclones.xml");
         }
     }
 }
