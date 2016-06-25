@@ -73,7 +73,7 @@ namespace CloneFinder
                     var endOffset =
                         Offsets[Offsets.Length-1] + // last word offset
                         Reprs[Offsets.Length-1].Length; // + its length
-                    return endOffset - StartOffset + 1;
+                    return endOffset - StartOffset;
                 }
             }
 

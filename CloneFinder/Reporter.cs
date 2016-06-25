@@ -39,9 +39,18 @@ namespace CloneFinder
                         result.AddLast(/*clof.Repr*/clof.GetText(wholeText));
                     }
 
+                    var cloneOffset = clo.First().StartOffset;
+                    var cloneLength = clo.Last().StartOffset + clo.Last().LengthInChars - clo.First().StartOffset;
+                    var cloneText = wholeText.Substring(cloneOffset, cloneLength);
+
                     ymlGroup.Add(new
                     {
-                        fuzzyclone = ymlClone.ToArray()
+                        fuzzyclone = new {
+                            offset = cloneOffset,
+                            length = cloneLength,
+                            text = cloneText,
+                            fragments = ymlClone.ToArray()
+                        }
                     });
                     gcounter++;
                 }
