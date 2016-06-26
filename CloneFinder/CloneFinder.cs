@@ -116,7 +116,8 @@ namespace CloneFinder
 
         public void Run()
         {
-            var text = ConvertXmlToText(_documentPath, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+            // var text = ConvertXmlToText(_documentPath, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+            var text = System.IO.File.ReadAllText(_documentPath);
             var fragments = Preprocess(text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments
             List<List<Fragment>> clones;
 
@@ -190,42 +191,25 @@ namespace CloneFinder
 
             var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
             var stemmer = new EnglishStemmer();
-            var delimeters = new[] { ' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'', '/', '\\', '-', '+', '=', '*', '<', '>' };
-            var prewords = text.Split(delimeters/*, StringSplitOptions.RemoveEmptyEntries*/).ToList();     //text is splitted by delimeters
-            // empty strings between two delimiters, each word adds 1 + its length to offset
-            var preoffsets = new int[prewords.Count];
-            {
-                var coffs = 0;
-                for(var i = 0; i < preoffsets.Length; ++i)
-                {
-                    preoffsets[i] = coffs;
-                    coffs += prewords[i].Length + 1;
-                }
-            }
 
-            var wordsOffsets = Enumerable.
-                Zip(prewords, preoffsets, (w, o) => new Tuple<string, int>(w, o)).
-                Where(wo => !string.IsNullOrEmpty(wo.Item1));
-
-            var words = (from wo in wordsOffsets select wo.Item1).ToList();
-            var offsets = (from wo in wordsOffsets select wo.Item2).ToArray();
-            var reprs = words.ToArray(); // copy
+            var reprs = XMLWords.GetWords(text).ToArray();
+            var words = (from r in reprs select r.Item1).ToArray();
 
             //this part can be parallelized by splitting words in different lists
-            var preprocessedText = NormalizeAndCreateAlphabet(ref words, lemmatizer, stemmer, ref alphabet);
-            var textInNumbers = ConvertTextWithNewAlphabet(words.ToArray(), alphabet);    //instead of words in text there will be numbers (of word in alphabet)
+            var preprocessedText = NormalizeAndCreateAlphabet(words, lemmatizer, stemmer, ref alphabet);
+            var textInNumbers = ConvertTextWithNewAlphabet(words, alphabet);    //instead of words in text there will be numbers (of word in alphabet)
 
-            return Split(preprocessedText, textInNumbers, reprs, offsets);
+            return Split(preprocessedText, textInNumbers, reprs);
         }
 
-        private Fragment[] Split(string text, int[] newText, string[] reprs, int[] offsets)
+        private Fragment[] Split(string text, int[] newText, Tuple<string, int> [] reprs)
         {
             if (String.IsNullOrEmpty(text) || newText == null || newText.Length == 0)
             {
                 throw new Exception("Incorrect parameters for splitting text to fragments");
             }
             //This method will return an array of Fragments
-            return FragmentText(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries), newText, reprs, offsets);
+            return FragmentText(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries), newText, reprs);
         }
 
         private List<List<Fragment>> FindClones(List<Fragment> fragments, int searchStartPosition, int searchStopPosition)
@@ -379,7 +363,7 @@ namespace CloneFinder
             return sb.ToString();
         }
 
-        private string NormalizeAndCreateAlphabet(ref List<string> words, ILemmatizer lemmatizer, IStemmer stemmer, ref List<string> alphabet)
+        private string NormalizeAndCreateAlphabet(string [] words, ILemmatizer lemmatizer, IStemmer stemmer, ref List<string> alphabet)
         {
             if (words == null || lemmatizer == null || stemmer == null)
             {
@@ -388,7 +372,7 @@ namespace CloneFinder
 
             var preprocessedText = new StringBuilder();
 
-            for (var i = 0; i < words.Count; i++)
+            for (var i = 0; i < words.Length; i++)
             {
                 var newWord = stemmer.Stem(lemmatizer.Lemmatize(words[i].ToLower())); //firstly the words are lemmatized, then stemmed
                 words[i] = newWord;
@@ -425,7 +409,7 @@ namespace CloneFinder
             return numbers;
         }
 
-        private Fragment[] FragmentText(string[] words, int[] newText, string[] reprs, int[] offsets)
+        private Fragment[] FragmentText(string[] words, int[] newText, Tuple<string, int>[] reprs)
         {
             if (words == null || words.Length == 0 || newText == null || newText.Length == 0)
             {
@@ -447,8 +431,8 @@ namespace CloneFinder
                 for (var j = i; j < i + _fragmentSize; j++)
                 {
                     numbers[j - i] = newText[j];                            //numbers would represent words that are in current fragment
-                    wreprs[j - i] = reprs[j];
-                    woffsets[j - i] = offsets[j];
+                    wreprs[j - i] = reprs[j].Item1;
+                    woffsets[j - i] = reprs[j].Item2;
                     if (j < wordsLength) symbols[j - i] = words[j][0];      //symbols are first letters of each word in fragment
                 }
 
