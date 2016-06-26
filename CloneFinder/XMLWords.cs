@@ -41,7 +41,7 @@ namespace CloneFinder
             return wordsOffsets.ToList();
         }
 
-        protected readonly string xml;
+        protected readonly string UnixXml;
         // protected readonly string[] lines;
         protected readonly int[] lineoffsets;
 
@@ -50,10 +50,10 @@ namespace CloneFinder
             return s.Replace("\r", "");
         }
 
-        public XMLWords(string xml)
+        public XMLWords(string InpuXml)
         {
-            this.xml = Dos2Unix(xml); // Only \n, only hardcore
-            var lines = xml.Split('\n');
+            this.UnixXml = Dos2Unix(InpuXml); // Only \n, only hardcore
+            var lines = UnixXml.Split('\n');
             lineoffsets = new int[lines.Length];
 
             var curoffs = 0;
@@ -77,7 +77,7 @@ namespace CloneFinder
 
         public string GetReformattedXML()
         {
-            return xml;
+            return UnixXml;
         }
 
         public List<Tuple<string, int>> GetWords()
@@ -85,7 +85,7 @@ namespace CloneFinder
             var results = new List<Tuple<string, int>>();
 
             // encode and decode it back (lol do something with it)
-            using (var sreader = new StreamReader(new MemoryStream(Encoding.UTF8.GetBytes(xml))))
+            using (var sreader = new StreamReader(new MemoryStream(Encoding.UTF8.GetBytes(UnixXml))))
             // then get XML of it
             using (var xreader = XmlReader.Create(sreader, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore }))
             {
@@ -96,31 +96,32 @@ namespace CloneFinder
                     var offset = LineCol2Offset(ln, cn);
 
                     var textNode = xreader.Value; // we should not use this due to unescaping
-                    var textEscaped = string.Empty;
+                    var sourceText = string.Empty;
                     switch (xreader.NodeType)
                     {
                         case XmlNodeType.Text:
-                            textEscaped = Dos2Unix(new System.Xml.Linq.XText(textNode).ToString());
+                            // textEscaped = Dos2Unix(new System.Xml.Linq.XText(textNode).ToString());
+                            // source documents often have improper escapes, so this is likely an only option
+                            var endOffset = UnixXml.IndexOf("<", offset + 1);
+                            sourceText = UnixXml.Substring(offset, endOffset - offset);
                             break;
                         case XmlNodeType.CDATA:
-                            textEscaped = Dos2Unix(new System.Xml.Linq.XCData(textNode).ToString());
-                            textEscaped = textEscaped.Substring(9, textEscaped.Length - 3 - 9);
+                            sourceText = Dos2Unix(new System.Xml.Linq.XCData(textNode).ToString());
+                            sourceText = sourceText.Substring(9, sourceText.Length - 3 - 9);
                             break;
                         default:
                             continue;
                     }
 
-                    var length = textEscaped.Length;
+                    var length = sourceText.Length;
 
 #if true
                     // check results
-                    if (xml.Substring(offset, length) != textEscaped)
-                    {
-                        var osv = xml.Substring(offset, length);
-                        Console.WriteLine("{0}:{1} -- {2} / {3}", coordinates.LineNumber, coordinates.LinePosition, osv, textEscaped);
-                    }
+                    var osv = UnixXml.Substring(offset, length);
+                    if (osv != sourceText)
+                        Console.WriteLine("{0}:{1} -- {2} / {3}", coordinates.LineNumber, coordinates.LinePosition, osv, sourceText);
 #endif
-                    results.AddRange(GetTextWords(textEscaped, offset));
+                    results.AddRange(GetTextWords(sourceText, offset));
                 }
 
             }
@@ -128,12 +129,8 @@ namespace CloneFinder
 #if true
             // check results
             foreach(var word in results)
-            {
-                if(xml.Substring(word.Item2, word.Item1.Length) != word.Item1)
-                {
-                    System.Console.Error.WriteLine("{0}: {1} != {2}", word.Item2, xml.Substring(word.Item2, word.Item1.Length), word.Item1);
-                }
-            }
+                if(UnixXml.Substring(word.Item2, word.Item1.Length) != word.Item1)
+                    System.Console.Error.WriteLine("{0}: {1} != {2}", word.Item2, UnixXml.Substring(word.Item2, word.Item1.Length), word.Item1);
 #endif
 
             return results;
