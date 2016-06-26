@@ -192,7 +192,9 @@ namespace CloneFinder
             var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
             var stemmer = new EnglishStemmer();
 
-            var reprs = XMLWords.GetWords(text).ToArray();
+            var xmlLexer = new XMLWords(text);
+
+            var reprs = xmlLexer.GetWords().ToArray();
             var words = (from r in reprs select r.Item1).ToArray();
 
             //this part can be parallelized by splitting words in different lists
