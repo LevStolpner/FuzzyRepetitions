@@ -183,18 +183,13 @@ namespace CloneFinder
 
         private Fragment[] Preprocess(string _documentPath, ref string text)
         {
-            text = System.IO.File.ReadAllText(_documentPath);
-
-            if (String.IsNullOrEmpty(text))
-            {
-                throw new ArgumentNullException("text");
-            }
+            var srctext = System.IO.File.ReadAllText(_documentPath);
+            var xmlLexer = new XMLWords(srctext);
+            text = xmlLexer.UnixXml;
 
             var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
             var stemmer = new EnglishStemmer();
 
-            var xmlLexer = new XMLWords(text);
-            text = xmlLexer.UnixXml;
             System.IO.File.WriteAllText(_documentPath + ".reformatted", text);
 
             var reprs = xmlLexer.GetWords().ToArray();
