@@ -9,6 +9,12 @@ namespace CloneFinder
 {
     class Reporter
     {
+        protected static IEnumerable<T> ConcatA<T>(IEnumerable<IEnumerable<T>> src) {
+            foreach (var c in src)
+                foreach (var t in c)
+                    yield return t;
+        }
+
         public static void Report(List<List<List<CloneFinder.Fragment>>> data, string wholeText, string filename)
         {
             LinkedList<string> result = new LinkedList<string>();
@@ -26,21 +32,23 @@ namespace CloneFinder
 
                 foreach (var clo in g)
                 {
-                    result.AddLast(String.Format("---- {0,4} / {1,3} ----", counter, ++ccounter));
-                    foreach (var clof in clo) {
-                        result.AddLast(/*clof.Repr*/clof.GetText(wholeText));
-                    }
-
                     var cloneOffset = clo.First().StartOffset;
                     var cloneLength = clo.Last().StartOffset + clo.Last().LengthInChars - clo.First().StartOffset;
                     var cloneText = wholeText.Substring(cloneOffset, cloneLength);
+                    var cloneWords = string.Join(" ", from cf in clo select cf.Repr);
+
+                    result.AddLast(String.Format("---- {0,4} / {1,3} ----", counter, ++ccounter));
+                    result.AddLast(cloneWords);
 
                     var xmlClone = new XElement("fuzzyclone",
                         new XAttribute("filename", filename),
                         new XAttribute("offset", cloneOffset),
                         new XAttribute("length", cloneLength),
-                        new XElement("text",
+                        new XElement("sourcetext",
                             cloneText
+                        ),
+                        new XElement("sourcewords",
+                            cloneWords
                         ),
                         new XElement("fragments",
                             from clof in clo select new XElement("fuzzyfragment",

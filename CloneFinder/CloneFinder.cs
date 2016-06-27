@@ -82,7 +82,7 @@ namespace CloneFinder
                 get
                 {
                     return "" +
-                        StartOffset + ", " + LengthInChars + ": " +
+                        // StartOffset + ", " + LengthInChars + ": " +
                         (Reprs != null ? string.Join(" ", Reprs) : null);
                 }
             }
@@ -104,13 +104,13 @@ namespace CloneFinder
                 Reprs = null;
                 Offsets = null;
             }
-            public Fragment(int position, int[] words, int hash, string[] reprs, int []offsets)
+            public Fragment(int position, int[] words, int hash, Tuple<string, int>[] reprs)
             {
                 Position = position;
                 Words = words;
                 HashValue = hash;
-                Reprs = reprs;
-                Offsets = offsets;
+                Reprs = (from r in reprs select r.Item1).ToArray();
+                Offsets = (from r in reprs select r.Item2).ToArray();
             }
         }
 
@@ -194,8 +194,8 @@ namespace CloneFinder
             var stemmer = new EnglishStemmer();
 
             var xmlLexer = new XMLWords(text);
-            System.IO.File.WriteAllText(_documentPath + ".reformatted", xmlLexer.UnixXml);
-
+            text = xmlLexer.UnixXml;
+            System.IO.File.WriteAllText(_documentPath + ".reformatted", text);
 
             var reprs = xmlLexer.GetWords().ToArray();
             var words = (from r in reprs select r.Item1).ToArray();
@@ -429,19 +429,17 @@ namespace CloneFinder
             {
                 var symbols = new char[_fragmentSize];
                 var numbers = new int[_fragmentSize];
-                var wreprs = new string[_fragmentSize];
-                var woffsets = new int[_fragmentSize];
+                var wreprs = new Tuple<string, int>[_fragmentSize];
 
                 if (k >= numberOfFragments) break;
                 for (var j = i; j < i + _fragmentSize; j++)
                 {
                     numbers[j - i] = newText[j];                            //numbers would represent words that are in current fragment
-                    wreprs[j - i] = reprs[j].Item1;
-                    woffsets[j - i] = reprs[j].Item2;
+                    wreprs[j - i] = reprs[j];
                     if (j < wordsLength) symbols[j - i] = words[j][0];      //symbols are first letters of each word in fragment
                 }
 
-                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols), wreprs, woffsets);    //hash function uses array of first letters
+                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols), wreprs);    //hash function uses array of first letters
             }
 
             return arrayOfFragments;
