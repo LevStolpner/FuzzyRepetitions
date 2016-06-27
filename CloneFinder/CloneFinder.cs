@@ -116,9 +116,8 @@ namespace CloneFinder
 
         public void Run()
         {
-            // var text = ConvertXmlToText(_documentPath, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
-            var text = System.IO.File.ReadAllText(_documentPath);
-            var fragments = Preprocess(text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments
+            var text = string.Empty;
+            var fragments = Preprocess(_documentPath, ref text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments & saving reformatted text
             List<List<Fragment>> clones;
 
             var a = DateTime.Now;
@@ -182,8 +181,10 @@ namespace CloneFinder
 
         private List<string> alphabet = new List<string>();
 
-        private Fragment[] Preprocess(string text)
+        private Fragment[] Preprocess(string _documentPath, ref string text)
         {
+            text = System.IO.File.ReadAllText(_documentPath);
+
             if (String.IsNullOrEmpty(text))
             {
                 throw new ArgumentNullException("text");
@@ -193,6 +194,8 @@ namespace CloneFinder
             var stemmer = new EnglishStemmer();
 
             var xmlLexer = new XMLWords(text);
+            System.IO.File.WriteAllText(_documentPath + ".reformatted", xmlLexer.UnixXml);
+
 
             var reprs = xmlLexer.GetWords().ToArray();
             var words = (from r in reprs select r.Item1).ToArray();

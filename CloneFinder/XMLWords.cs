@@ -41,13 +41,13 @@ namespace CloneFinder
             return wordsOffsets.ToList();
         }
 
-        protected readonly string UnixXml;
+        public readonly string UnixXml;
         // protected readonly string[] lines;
         protected readonly int[] lineoffsets;
 
         protected static string Dos2Unix(string s)
         {
-            return s.Replace("\r", "");
+            return s.Replace("\r", "").Replace("\t", "    ");
         }
 
         public XMLWords(string InpuXml)
