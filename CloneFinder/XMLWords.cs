@@ -89,6 +89,11 @@ namespace CloneFinder
             // then get XML of it
             using (var xreader = XmlReader.Create(sreader, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore }))
             {
+                {   // supress unresolved entity errors
+                    PropertyInfo propertyInfo = xreader.GetType().GetProperty("DisableUndeclaredEntityCheck", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    propertyInfo.SetValue(xreader, true);
+                }
+
                 var coordinates = (IXmlLineInfo) xreader;
                 while (xreader.Read())
                 {
