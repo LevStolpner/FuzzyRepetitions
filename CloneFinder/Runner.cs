@@ -1,10 +1,10 @@
-﻿﻿using System;
+﻿using System;
 
 namespace CloneFinder
 {
     public class Runner
     {
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
             //arguments: path to xml file, size of fragment, max edit distance, difference between hashes,
             //using multithreading: 1 - one thread used, 2 - two threads, 3 - three threads
@@ -19,10 +19,12 @@ namespace CloneFinder
                     var converter = new CloneFinder(filePath, fragmentSize, editDist, hashDist, numberOfThreads);
                     converter.Run();
                 }
+				return 0;
             }
             catch (Exception exception)
             {
-                Console.WriteLine("Exception was thrown: {0}", exception.Message);
+				Console.Error.WriteLine("Exception was thrown: {0}", exception.Message);
+				return -1;
             }
 
         }
