@@ -35,7 +35,7 @@ namespace CloneFinder
                     var cloneOffset = clo.First().StartOffset;
                     var cloneLength = clo.Last().StartOffset + clo.Last().LengthInChars - clo.First().StartOffset;
                     var cloneText = wholeText.Substring(cloneOffset, cloneLength);
-                    var cloneWords = string.Join(" >-< ", from cf in clo select cf.Repr);
+                    var cloneWords = string.Join(" ", from cf in clo select cf.Repr);
 
                     result.AddLast(String.Format("---- {0,4} / {1,3} ----", counter, ++ccounter));
                     result.AddLast(cloneWords);
