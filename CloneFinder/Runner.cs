@@ -10,6 +10,7 @@ namespace CloneFinder
             //using multithreading: 1 - one thread used, 2 - two threads, 3 - three threads
             try
             {
+                // was LinuxKernel.xml 20 10 2 1
                 int fragmentSize, editDist, hashDist, numberOfThreads;
                 if (args != null && args.Length == 5 && int.TryParse(args[1], out fragmentSize) &&
                 int.TryParse(args[2], out editDist) && int.TryParse(args[3], out hashDist) && int.TryParse(args[4], out numberOfThreads))

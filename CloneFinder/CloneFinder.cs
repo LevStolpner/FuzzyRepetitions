@@ -51,23 +51,73 @@ namespace CloneFinder
             }
         }
 
-        private class Fragment
+        public class Fragment
         {
             public readonly int Position;
             public readonly int[] Words;
             public readonly int HashValue;
-            public Fragment(int position, int[] words, int hash)
+            public readonly string[] Reprs;
+            public readonly int[] Offsets;
+            public int StartOffset
+            {
+                get
+                {
+                    return Offsets != null ? Offsets[0] : -1; //Min
+                }
+            }
+
+            public int LengthInChars
+            {
+                get
+                {
+                    var endOffset =
+                        Offsets[Offsets.Length-1] + // last word offset
+                        Reprs[Offsets.Length-1].Length; // + its length
+                    return endOffset - StartOffset;
+                }
+            }
+
+            public string Repr
+            {
+                get
+                {
+                    return "" +
+                        // StartOffset + ", " + LengthInChars + ": " +
+                        (Reprs != null ? string.Join(" ", Reprs) : null);
+                }
+            }
+
+            public string GetText(string whole)
+            {
+                return whole.Substring(StartOffset, LengthInChars);
+            }
+
+            public override string ToString()
+            {
+                return Repr;
+            }
+
+            public Fragment(int position)
+            {
+                Position = position;
+                HashValue = 0;
+                Reprs = null;
+                Offsets = null;
+            }
+            public Fragment(int position, int[] words, int hash, Tuple<string, int>[] reprs)
             {
                 Position = position;
                 Words = words;
                 HashValue = hash;
+                Reprs = (from r in reprs select r.Item1).ToArray();
+                Offsets = (from r in reprs select r.Item2).ToArray();
             }
         }
 
         public void Run()
         {
-            var text = ConvertXmlToText(_documentPath, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
-            var fragments = Preprocess(text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments
+            var text = string.Empty;
+            var fragments = Preprocess(_documentPath, ref text);      //preprocessing includes lemmatizing, stemming, creating alphabet and splitting to fragments & saving reformatted text
             List<List<Fragment>> clones;
 
             var a = DateTime.Now;
@@ -117,6 +167,8 @@ namespace CloneFinder
             var averageSizeOfClone = newGroupedClones.Sum(t => t.Sum(t1 => t1.Count)) * _fragmentSize / averageSizeOfGroup / numberOfGroups;
             Console.WriteLine("Statistics: ");
             Console.WriteLine("Number of groups: {0}\nAverage size of group: {1}\nAverageSizeOfClone: {2}", numberOfGroups, averageSizeOfGroup, averageSizeOfClone);
+
+            Reporter.Report(newGroupedClones, text, _documentPath);
         }
 
         private string ConvertXmlToText(string documentPath, XmlReaderSettings settings)
@@ -129,33 +181,37 @@ namespace CloneFinder
             return ReadDocument(documentPath, settings);
         }
 
-        private Fragment[] Preprocess(string text)
+        private List<string> alphabet = new List<string>();
+
+        private Fragment[] Preprocess(string _documentPath, ref string text)
         {
-            if (String.IsNullOrEmpty(text))
-            {
-                throw new ArgumentNullException("text");
-            }
+            var srctext = System.IO.File.ReadAllText(_documentPath);
+            var xmlLexer = new XMLWords(srctext);
+            text = xmlLexer.UnixXml;
 
             var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
             var stemmer = new EnglishStemmer();
-            var delimeters = new[] { ' ', ',', '.', ')', '(', '{', '}', '[', ']', ':', ';', '!', '?', '"', '\'', '/', '\\', '-', '+', '=', '*', '<', '>' };
-            var words = text.Split(delimeters, StringSplitOptions.RemoveEmptyEntries).ToList();     //text is splitted by delimeters
-            var alphabet = new List<string>();
+
+            System.IO.File.WriteAllText(_documentPath + ".reformatted", text);
+
+            var reprs = xmlLexer.GetWords().ToArray();
+            var words = (from r in reprs select r.Item1).ToArray();
+
             //this part can be parallelized by splitting words in different lists
             var preprocessedText = NormalizeAndCreateAlphabet(words, lemmatizer, stemmer, alphabet);
-            var textInNumbers = ConvertTextWithNewAlphabet(words.ToArray(), alphabet);    //instead of words in text there will be numbers (of word in alphabet)
+            var textInNumbers = ConvertTextWithNewAlphabet(words, alphabet);    //instead of words in text there will be numbers (of word in alphabet)
 
-            return Split(preprocessedText, textInNumbers);
+            return Split(preprocessedText, textInNumbers, reprs);
         }
 
-        private Fragment[] Split(string text, int[] newText)
+        private Fragment[] Split(string text, int[] newText, Tuple<string, int> [] reprs)
         {
             if (String.IsNullOrEmpty(text) || newText == null || newText.Length == 0)
             {
                 throw new Exception("Incorrect parameters for splitting text to fragments");
             }
             //This method will return an array of Fragments
-            return FragmentText(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries), newText);
+            return FragmentText(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries), newText, reprs);
         }
 
         private List<List<Fragment>> FindClones(List<Fragment> fragments, int searchStartPosition, int searchStopPosition)
@@ -309,7 +365,7 @@ namespace CloneFinder
             return sb.ToString();
         }
 
-        private string NormalizeAndCreateAlphabet(List<string> words, ILemmatizer lemmatizer, IStemmer stemmer, List<string> alphabet)
+        private string NormalizeAndCreateAlphabet(string [] words, ILemmatizer lemmatizer, IStemmer stemmer, List<string> alphabet)
         {
             if (words == null || lemmatizer == null || stemmer == null)
             {
@@ -318,7 +374,7 @@ namespace CloneFinder
 
             var preprocessedText = new StringBuilder();
 
-            for (var i = 0; i < words.Count; i++)
+            for (var i = 0; i < words.Length; i++)
             {
                 var newWord = stemmer.Stem(lemmatizer.Lemmatize(words[i].ToLower())); //firstly the words are lemmatized, then stemmed
                 words[i] = newWord;
@@ -355,7 +411,7 @@ namespace CloneFinder
             return numbers;
         }
 
-        private Fragment[] FragmentText(string[] words, int[] newText)
+        private Fragment[] FragmentText(string[] words, int[] newText, Tuple<string, int>[] reprs)
         {
             if (words == null || words.Length == 0 || newText == null || newText.Length == 0)
             {
@@ -370,15 +426,17 @@ namespace CloneFinder
             {
                 var symbols = new char[_fragmentSize];
                 var numbers = new int[_fragmentSize];
+                var wreprs = new Tuple<string, int>[_fragmentSize];
 
                 if (k >= numberOfFragments) break;
                 for (var j = i; j < i + _fragmentSize; j++)
                 {
                     numbers[j - i] = newText[j];                            //numbers would represent words that are in current fragment
+                    wreprs[j - i] = reprs[j];
                     if (j < wordsLength) symbols[j - i] = words[j][0];      //symbols are first letters of each word in fragment
                 }
 
-                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols));    //hash function uses array of first letters
+                arrayOfFragments[k] = new Fragment(k, numbers, Hash(symbols), wreprs);    //hash function uses array of first letters
             }
 
             return arrayOfFragments;
