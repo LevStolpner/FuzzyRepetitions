@@ -18,11 +18,13 @@ namespace CloneFinder
         private readonly int _numberOfDifferences;           //parameter for maximal edit distance between fragments
         private readonly int _hashFragmentDifference;        //parameter for hash value difference between fragments
         private readonly int _numberOfThreads;
-
+        private readonly LanguageSupport langSupport;
         private readonly int[][] _d;                         //table, which will be used for fast calculating edit distance algorithm
 
-        public CloneFinder(string documentPath, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference, int numberOfThreads)
+        public CloneFinder(string documentPath, int sizeOfFragment, int numberOfDifferences, int hashFragmentDifference, int numberOfThreads, LanguageSupport languageSupport)
         {
+            this.langSupport = languageSupport;
+
             if (String.IsNullOrEmpty(documentPath))
             {
                 throw new ArgumentNullException("documentPath");
@@ -189,8 +191,8 @@ namespace CloneFinder
             var xmlLexer = new XMLWords(srctext);
             text = xmlLexer.UnixXml;
 
-            var lemmatizer = new LemmatizerPrebuiltCompact(LanguagePrebuilt.English);
-            var stemmer = new EnglishStemmer();
+            var lemmatizer = langSupport.Lemmatizer;
+            var stemmer = langSupport.Stemmer;
 
             System.IO.File.WriteAllText(_documentPath + ".reformatted", text);
 

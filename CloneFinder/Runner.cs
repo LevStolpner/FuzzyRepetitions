@@ -4,21 +4,29 @@ namespace CloneFinder
 {
     public class Runner
     {
+        static string FilePath = string.Empty;
+        // was LinuxKernel.xml 20 10 2 1
+        static int FragmentSize, EditDist = 20, HashDist = 10, NumberOfThreads = 1;
+        static string Language = "English";
+
         static int Main(string[] args)
         {
+
             //arguments: path to xml file, size of fragment, max edit distance, difference between hashes,
             //using multithreading: 1 - one thread used, 2 - two threads, 3 - three threads
             try
             {
-                // was LinuxKernel.xml 20 10 2 1
-                int fragmentSize, editDist, hashDist, numberOfThreads;
-                if (args != null && args.Length == 5 && int.TryParse(args[1], out fragmentSize) &&
-                int.TryParse(args[2], out editDist) && int.TryParse(args[3], out hashDist) && int.TryParse(args[4], out numberOfThreads))
-                {
-                    var filePath = args[0];
-                    var converter = new CloneFinder(filePath, fragmentSize, editDist, hashDist, numberOfThreads);
-                    converter.Run();
-                }
+                var options = new NDesk.Options.OptionSet {
+                    { "document=", v => FilePath = v },
+                    { "frgamentsize=", v => FragmentSize = int.Parse(v)},
+                    { "maxeditdist=", v => EditDist= int.Parse(v) },
+                    { "maxhashdist=", v => HashDist = int.Parse(v) },
+                    { "threads=", v => NumberOfThreads = int.Parse(v) },
+                    { "language=", v => Language = v }
+                }.Parse(args);
+
+                var converter = new CloneFinder(FilePath, FragmentSize, EditDist, HashDist, NumberOfThreads, new LanguageSupport(Language));
+                converter.Run();
 				return 0;
             }
             catch (Exception exception)
