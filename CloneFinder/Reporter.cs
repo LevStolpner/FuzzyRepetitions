@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using System.Xml.Linq;
+using System.Text.RegularExpressions;
 
 namespace CloneFinder
 {
@@ -13,6 +14,19 @@ namespace CloneFinder
             foreach (var c in src)
                 foreach (var t in c)
                     yield return t;
+        }
+
+        private static Regex tagRegex = new Regex("<.*?>", RegexOptions.Compiled);
+        private static Regex spacesRegex = new Regex("\\s+", RegexOptions.Compiled);
+        /// <summary>Strip XML tags from text</summary>
+        /// <remarks>We probably want better implementation for it</remarks>
+        /// <param name="text">Source fragment of XML, mostly unbalanced</param>
+        /// <returns></returns>
+        private static string CleanupTags(string text)
+        {
+            var tagStripped = tagRegex.Replace(text, " ");
+            var spacesRemoves = spacesRegex.Replace(tagStripped, " ");
+            return spacesRemoves;
         }
 
         public static void Report(List<List<List<CloneFinder.Fragment>>> data, string wholeText, string filename)
@@ -34,7 +48,7 @@ namespace CloneFinder
                 {
                     var cloneOffset = clo.First().StartOffset;
                     var cloneLength = clo.Last().StartOffset + clo.Last().LengthInChars - clo.First().StartOffset;
-                    var cloneText = wholeText.Substring(cloneOffset, cloneLength);
+                    var rawCloneText = wholeText.Substring(cloneOffset, cloneLength);
                     var cloneWords = string.Join(" ", from cf in clo select cf.Repr);
 
                     result.AddLast(String.Format("---- {0,4} / {1,3} ----", counter, ++ccounter));
@@ -45,7 +59,10 @@ namespace CloneFinder
                         new XAttribute("offset", cloneOffset),
                         new XAttribute("length", cloneLength),
                         new XElement("sourcetext",
-                            cloneText
+                            CleanupTags(rawCloneText)
+                        ),
+                        new XElement("rawsource",
+                            rawCloneText
                         ),
                         new XElement("sourcewords",
                             cloneWords
