@@ -35,6 +35,10 @@
     <Reference Include="Lzma#">
       <HintPath>..\LemmaGen_v3.0_PrebuiltCompact\LemmaSharp\ExternalLibs\Lzma#.dll</HintPath>
     </Reference>
+    <Reference Include="NDesk.Options, Version=0.2.1.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\NDesk.Options.0.2.1\lib\NDesk.Options.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="StemmersNet">
       <HintPath>..\packages\StemmersNet.1.1.1.0\lib\net20\StemmersNet.dll</HintPath>
     </Reference>
@@ -48,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CloneFinder.cs" />
+    <Compile Include="LanguageSupport.cs" />
     <Compile Include="Reporter.cs" />
     <Compile Include="Runner.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
