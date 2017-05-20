@@ -31,8 +31,10 @@ namespace CloneFinder
             }
             catch (Exception exception)
             {
-				Console.Error.WriteLine("Exception was thrown: {0}", exception.Message);
-				return -1;
+                Console.Error.WriteLine("Exception was thrown: {0}", exception.Message);
+                Console.Error.WriteLine("Stack:");
+                Console.Error.WriteLine(exception.StackTrace);
+                return -1;
             }
 
         }
